@@ -134,9 +134,35 @@ h3 {
     align-items: start;
 }
 
+/* Wide screens: a fixed-height dashboard where the map fills the middle column and the side columns scroll. */
+@media (min-width: 961px) {
+    .app {
+        height: 100vh;
+    }
+
+    .layout {
+        min-height: 0;
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    .side-column,
+    .turtle-detail {
+        max-height: 100%;
+        overflow-y: auto;
+    }
+
+    .fleet-map {
+        align-self: stretch;
+    }
+}
+
 @media (max-width: 960px) {
     .layout {
         grid-template-columns: 1fr;
+    }
+
+    .fleet-map {
+        height: 75vh;
     }
 }
 
@@ -237,6 +263,7 @@ h3 {
     gap: 0.75rem;
     margin-bottom: 0.75rem;
     flex-wrap: wrap;
+    min-height: 1.75rem; /* room for the Recentre button, so the map doesn't shift when it appears */
 }
 
 .map-header select {
@@ -244,17 +271,42 @@ h3 {
     padding: 0.15rem 0.3rem;
 }
 
+.fleet-map {
+    display: flex;
+    flex-direction: column;
+}
+
 .map-svg {
     display: block;
+    flex: 1;
+    min-height: 0;
     width: 100%;
-    aspect-ratio: 1;
-    max-height: 75vh;
     background: var(--map-bg);
     border-radius: 6px;
+    cursor: grab;
+    touch-action: none; /* pointer drags pan the map instead of scrolling the page */
+    user-select: none;
+}
+
+.map-svg.dragging,
+.map-svg.dragging .marker {
+    cursor: grabbing;
+}
+
+.secondary.map-recentre {
+    margin-left: auto;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.85rem;
 }
 
 .grid-line {
     stroke: var(--grid);
+    opacity: 0.6;
+}
+
+.grid-line.major {
+    stroke: var(--grid-axis);
+    opacity: 0.5;
 }
 
 .grid-axis {
@@ -275,6 +327,11 @@ h3 {
 
 .marker-dot {
     stroke: var(--panel);
+}
+
+.marker-arrow {
+    fill: var(--panel);
+    opacity: 0.85;
 }
 
 .marker-ring {
