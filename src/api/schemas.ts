@@ -48,6 +48,21 @@ export interface SeedRequest {
     source?: string;
 }
 
+/** protocol.api.MAX_LABEL_LENGTH: ComputerCraft truncates computer labels to this many characters. */
+export const MAX_LABEL_LENGTH = 32;
+
+/** protocol.api.PendingLabel: a rename the server is waiting to hand to a turtle on its next heartbeat. */
+export const PendingLabelSchema = z.object({
+    label: z.string().nullish().transform((l) => l ?? null), // null clears the label
+    ts: z.number(), // unix seconds
+});
+export type PendingLabel = z.infer<typeof PendingLabelSchema>;
+
+/** protocol.api.LabelRequest: body of PUT /api/turtles/{id}/label. A null or blank label clears it. */
+export interface LabelRequest {
+    label: string | null;
+}
+
 /** protocol.api.TurtleStatus */
 export const TurtleStatusSchema = z.object({
     turtleId: z.number().int(),
@@ -56,6 +71,7 @@ export const TurtleStatusSchema = z.object({
     lastSeen: z.number().nullish().transform((t) => t ?? null), // unix seconds, null if never seen
     position: TurtlePositionSchema.nullish().transform((p) => p ?? null),
     pendingSeed: PositionSeedSchema.nullish().transform((s) => s ?? null), // sent but not yet applied by the turtle
+    pendingLabel: PendingLabelSchema.nullish().transform((l) => l ?? null), // rename not yet applied by the turtle
 });
 export type TurtleStatus = z.infer<typeof TurtleStatusSchema>;
 

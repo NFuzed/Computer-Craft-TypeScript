@@ -430,7 +430,28 @@ h3 {
     cursor: default;
 }
 
-.seed-error {
+.seed-error, .label-error {
     margin: 0;
     color: var(--error-text);
+}
+
+.label-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.label-form input {
+    flex: 1;
+    font: inherit;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    min-width: 0;
+}
+
+.label-form .label-error {
+    flex-basis: 100%;
 }
