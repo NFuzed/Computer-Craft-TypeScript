@@ -32,3 +32,30 @@ export function useNowSeconds(intervalMs = 5_000): number {
     }, [intervalMs]);
     return now;
 }
+
+/** "minecraft:oak_log" → "Oak Log"; items from other mods keep their namespace, e.g. "Turtle Advanced (computercraft)". */
+export function itemDisplayName(itemId: string): string {
+    const [namespace, path] = splitItemId(itemId);
+    const name = path.split("_").filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+    return namespace === "minecraft" ? name : `${name} (${namespace})`;
+}
+
+/** Up to two letters standing in for an item's icon: "oak_log" → "OL", "cobblestone" → "Co". */
+export function itemAbbreviation(itemId: string): string {
+    const words = splitItemId(itemId)[1].split("_").filter(Boolean);
+    if (words.length === 0) return "?";
+    if (words.length === 1) return words[0]!.slice(0, 2).replace(/^./, (c) => c.toUpperCase());
+    return (words[0]![0]! + words[words.length - 1]![0]!).toUpperCase();
+}
+
+/** Stable colour per item id, so the same item looks the same in every slot and turtle. */
+export function itemColor(itemId: string): string {
+    let hash = 0;
+    for (let i = 0; i < itemId.length; i++) hash = (hash * 31 + itemId.charCodeAt(i)) | 0;
+    return `hsl(${Math.abs(hash) % 360} 45% 45%)`;
+}
+
+function splitItemId(itemId: string): [string, string] {
+    const i = itemId.indexOf(":");
+    return i === -1 ? ["minecraft", itemId] : [itemId.slice(0, i), itemId.slice(i + 1)];
+}

@@ -63,6 +63,67 @@ export interface LabelRequest {
     label: string | null;
 }
 
+/** protocol.api.INVENTORY_SIZE: turtle inventory slots are numbered 1 to 16, in a 4 × 4 grid. */
+export const INVENTORY_SIZE = 16;
+
+/** protocol.api.InventorySlot: one non-empty slot, as reported by turtle.getItemDetail. */
+export const InventorySlotSchema = z.object({
+    slot: z.number().int(), // 1..16
+    name: z.string(), // item id, e.g. "minecraft:cobblestone"
+    count: z.number().int(),
+    nbt: z.string().nullish().transform((n) => n ?? null), // hash of the item's NBT, if it has any
+});
+export type InventorySlot = z.infer<typeof InventorySlotSchema>;
+
+/** protocol.api.TurtleFuel: turtle.getFuelLevel / getFuelLimit. Both null when the server has unlimited fuel. */
+export const TurtleFuelSchema = z.object({
+    level: z.number().int().nullish().transform((l) => l ?? null),
+    limit: z.number().int().nullish().transform((l) => l ?? null),
+});
+export type TurtleFuel = z.infer<typeof TurtleFuelSchema>;
+
+/** protocol.api.MAX_REFUEL_COUNT: most items one refuel can burn (a full stack). */
+export const MAX_REFUEL_COUNT = 64;
+
+/** protocol.api.RefuelRequest: body of POST /api/turtles/{id}/refuel. A null count burns the whole selected stack. */
+export interface RefuelRequest {
+    count: number | null;
+}
+
+/** protocol.api.RefuelCommand: returned with 202 once the refuel has been sent to the turtle. */
+export const RefuelCommandSchema = z.object({
+    refuelId: z.number().int(),
+    count: z.number().int().nullish().transform((c) => c ?? null),
+    ts: z.number(),
+});
+export type RefuelCommand = z.infer<typeof RefuelCommandSchema>;
+
+/** protocol.api.RefuelResult: what happened when the turtle ran a refuel. */
+export const RefuelResultSchema = z.object({
+    refuelId: z.number().int(),
+    refueled: z.boolean(),
+    error: z.string().nullish().transform((e) => e ?? null), // e.g. "Items not combustible"
+    fuelAdded: z.number().int().nullish().transform((f) => f ?? null), // null when fuel is unlimited
+    ts: z.number(),
+});
+export type RefuelResult = z.infer<typeof RefuelResultSchema>;
+
+/** protocol.api.TurtleInventory: the last inventory a turtle reported. Empty slots are left out of `slots`. */
+export const TurtleInventorySchema = z.object({
+    selectedSlot: z.number().int(),
+    slots: z.array(InventorySlotSchema),
+    fuel: TurtleFuelSchema.nullish().transform((f) => f ?? null), // null if the turtle's code predates fuel reporting
+    lastRefuel: RefuelResultSchema.nullish().transform((r) => r ?? null), // latest refuel since the server started
+    ts: z.number(), // unix seconds
+});
+export type TurtleInventory = z.infer<typeof TurtleInventorySchema>;
+
+/** protocol.api.SelectSlotRequest: body of POST /api/turtles/{id}/inventory/selected. */
+export const SelectSlotRequestSchema = z.object({
+    slot: z.number().int(), // 1..16
+});
+export type SelectSlotRequest = z.infer<typeof SelectSlotRequestSchema>;
+
 /** protocol.api.TurtleStatus */
 export const TurtleStatusSchema = z.object({
     turtleId: z.number().int(),
