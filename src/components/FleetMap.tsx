@@ -155,7 +155,8 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
 
     // Once the user drags or zooms, the map stops following the turtles until they recentre it, select another
     // turtle or change dimension. The key ties the manual frame to what was being followed when it was made.
-    const followKey = `${dimension}:${selected?.turtleId ?? "all"}`;
+    const followKeyFor = (turtleId: number | undefined) => `${dimension}:${turtleId ?? "all"}`;
+    const followKey = followKeyFor(selected?.turtleId);
     const [panned, setPanned] = useState<{ key: string; frame: Frame } | null>(null);
     const manualFrame = panned?.key === followKey ? panned.frame : null;
     const frame = autoFrame && (manualFrame ?? autoFrame);
@@ -196,6 +197,13 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     }, [svg]);
 
     const view = frame && size && viewFor(frame, size);
+
+    // Selecting from the list centres the map on the turtle, but selecting on the map keeps the map where it is:
+    // the turtle is already in view, and jumping would move it out from under the cursor.
+    function selectOnMap(turtleId: number) {
+        if (frame) setPanned({key: followKeyFor(turtleId), frame});
+        onSelect(turtleId);
+    }
 
     function onPointerDown(e: PointerEvent<SVGSVGElement>) {
         if (e.button !== 0 || !frame) return;
@@ -291,7 +299,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                                     turtle={t}
                                     blocksPerPixel={view.blocksPerPixel}
                                     selected={t.turtleId === selectedId}
-                                    onSelect={onSelect}
+                                    onSelect={selectOnMap}
                                 />
                             ))}
                         </>
