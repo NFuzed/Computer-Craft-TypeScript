@@ -4,7 +4,14 @@ import {
     type LabelRequest,
     type PositionSeed,
     PositionSeedSchema,
+    type RefuelCommand,
+    RefuelCommandSchema,
+    type RefuelRequest,
     type SeedRequest,
+    type SelectSlotRequest,
+    SelectSlotRequestSchema,
+    type TurtleInventory,
+    TurtleInventorySchema,
     type TurtleStatus,
     TurtleStatusListSchema,
     TurtleStatusSchema,
@@ -77,6 +84,42 @@ export function renameTurtle(id: number, label: string | null): Promise<TurtleSt
     const body: LabelRequest = {label};
     return request(`/api/turtles/${id}/label`, TurtleStatusSchema, {
         method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+    });
+}
+
+/** The turtle's last reported inventory, or null if it has never reported one (404). */
+export async function fetchInventory(id: number): Promise<TurtleInventory | null> {
+    try {
+        return await request(`/api/turtles/${id}/inventory`, TurtleInventorySchema);
+    } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+    }
+}
+
+/**
+ * Tells a connected turtle to select a slot (1-16). Not queued: the server answers 409 if the turtle is offline.
+ * The new selection shows up once the turtle reports its inventory again.
+ */
+export function selectSlot(id: number, slot: number): Promise<SelectSlotRequest> {
+    const body: SelectSlotRequest = {slot};
+    return request(`/api/turtles/${id}/inventory/selected`, SelectSlotRequestSchema, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+    });
+}
+
+/**
+ * Tells a connected turtle to burn `count` items from its selected slot as fuel (null burns the whole stack). Not
+ * queued: 409 if the turtle is offline. The outcome shows up as the inventory's `lastRefuel` with the same refuelId.
+ */
+export function refuelTurtle(id: number, count: number | null): Promise<RefuelCommand> {
+    const body: RefuelRequest = {count};
+    return request(`/api/turtles/${id}/refuel`, RefuelCommandSchema, {
+        method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body),
     });

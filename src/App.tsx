@@ -1,5 +1,6 @@
 import {useState} from "react";
 import {FleetMap} from "./components/FleetMap";
+import {InventoryPanel} from "./components/InventoryPanel";
 import {TurtleDetail} from "./components/TurtleDetail";
 import {TurtleList} from "./components/TurtleList";
 import {useDashboardSocket} from "./hooks/useDashboardSocket";
@@ -41,7 +42,10 @@ export function App() {
                     <p className="muted empty">Loading turtles…</p>
                 ) : (
                     <>
-                        <TurtleList turtles={turtles} selectedId={selectedId} onSelect={setSelectedId}/>
+                        <div className="side-column">
+                            <TurtleList turtles={turtles} selectedId={selectedId} onSelect={setSelectedId}/>
+                            <InventoryPanel turtle={selected}/>
+                        </div>
                         <FleetMap turtles={turtles} selectedId={selectedId} onSelect={setSelectedId}/>
                         <TurtleDetail turtle={selected} onClose={() => setSelectedId(null)}/>
                     </>

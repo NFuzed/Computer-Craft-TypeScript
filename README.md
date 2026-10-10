@@ -89,13 +89,16 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 
 ### REST
 
-| Method | Path                         | Response                                                                                                 |
-|--------|------------------------------|----------------------------------------------------------------------------------------------------------|
-| `GET`  | `/api/turtles`               | `TurtleStatus[]`                                                                                         |
-| `GET`  | `/api/turtles/{id}`          | `TurtleStatus`                                                                                           |
-| `POST` | `/api/turtles/{id}/seed`     | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`    |
-| `PUT`  | `/api/turtles/{id}/label`    | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars) |
-| `POST` | `/api/turtles/{id}/commands` | *(later)* queue a command for a turtle                                                                   |
+| Method | Path                                   | Response                                                                                                   |
+|--------|----------------------------------------|------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/api/turtles`                         | `TurtleStatus[]`                                                                                           |
+| `GET`  | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                             |
+| `POST` | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`      |
+| `PUT`  | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)   |
+| `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                           |
+| `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                     |
+| `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline |
+| `POST` | `/api/turtles/{id}/commands`           | *(later)* queue a command for a turtle                                                                     |
 
 ```ts
 type TurtleStatus = {
@@ -118,6 +121,25 @@ type TurtleStatus = {
 // registers again, and a registration carrying the same label clears it.
 type PendingLabel = {
     label: string | null;           // null clears the label
+    ts: number;
+};
+
+// The turtle reports its whole inventory on connect, whenever it changes, and after selecting a slot or refuelling.
+// /ws/dashboard has no inventory event, so the dashboard polls the selected turtle's inventory every 2s.
+type TurtleInventory = {
+    selectedSlot: number;           // 1..16
+    slots: { slot: number; name: string; count: number; nbt: string | null }[]; // empty slots are left out
+    fuel: { level: number | null; limit: number | null } | null; // null = not reported; level/limit null = unlimited
+    lastRefuel: RefuelResult | null; // the turtle's latest refuel since the server started
+    ts: number;
+};
+
+// POST /refuel returns { refuelId, count, ts }; the turtle's answer shows up as lastRefuel with the same refuelId.
+type RefuelResult = {
+    refuelId: number;
+    refueled: boolean;
+    error: string | null;           // turtle.refuel's reason, e.g. "Items not combustible"
+    fuelAdded: number | null;       // null when fuel is unlimited
     ts: number;
 };
 
@@ -162,10 +184,13 @@ src/
 │   └── socket.ts        # /ws/dashboard connection + reconnect logic
 ├── hooks/
 │   ├── useTurtles.ts    # REST query + live socket updates merged into one store
+│   ├── useInventory.ts  # polls a turtle's inventory, selects slots
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── TurtleList.tsx   # online/offline, label, last seen
 │   ├── TurtleDetail.tsx # position, heading, (later) fuel/inventory/commands
+│   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
+│   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelForm.tsx    # rename a turtle (PUT /label)
 │   ├── SeedForm.tsx     # set a turtle's position + heading (POST /seed)
 │   └── FleetMap.tsx     # top-down X/Z map
@@ -187,5 +212,7 @@ src/
 - [x] Turtle detail panel
 - [x] Seed a turtle's position and heading from the detail panel
 - [x] Rename a turtle from the detail panel
+- [x] Show a turtle's inventory and select its slot
+- [x] Show a turtle's fuel and refuel it from the selected slot
 - [ ] Sending commands (move, mine, return home) once the backend supports them
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)
