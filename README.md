@@ -89,12 +89,13 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 
 ### REST
 
-| Method | Path                         | Response                                                                                              |
-|--------|------------------------------|-------------------------------------------------------------------------------------------------------|
-| `GET`  | `/api/turtles`               | `TurtleStatus[]`                                                                                      |
-| `GET`  | `/api/turtles/{id}`          | `TurtleStatus`                                                                                        |
-| `POST` | `/api/turtles/{id}/seed`     | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }` |
-| `POST` | `/api/turtles/{id}/commands` | *(later)* queue a command for a turtle                                                                |
+| Method | Path                         | Response                                                                                                 |
+|--------|------------------------------|----------------------------------------------------------------------------------------------------------|
+| `GET`  | `/api/turtles`               | `TurtleStatus[]`                                                                                         |
+| `GET`  | `/api/turtles/{id}`          | `TurtleStatus`                                                                                           |
+| `POST` | `/api/turtles/{id}/seed`     | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`    |
+| `PUT`  | `/api/turtles/{id}/label`    | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars) |
+| `POST` | `/api/turtles/{id}/commands` | *(later)* queue a command for a turtle                                                                   |
 
 ```ts
 type TurtleStatus = {
@@ -110,6 +111,14 @@ type TurtleStatus = {
     ts: number;
   } | null;
   pendingSeed: PositionSeed | null; // seeded but not yet applied by the turtle
+    pendingLabel: PendingLabel | null; // renamed but not yet applied by the turtle
+};
+
+// The server hands a rename to the turtle on its next heartbeat; the turtle calls os.setComputerLabel and
+// registers again, and a registration carrying the same label clears it.
+type PendingLabel = {
+    label: string | null;           // null clears the label
+    ts: number;
 };
 
 // Turtles have no GPS: they dead-reckon from a seed set on the dashboard. The server hands the seed
@@ -157,6 +166,7 @@ src/
 ├── components/
 │   ├── TurtleList.tsx   # online/offline, label, last seen
 │   ├── TurtleDetail.tsx # position, heading, (later) fuel/inventory/commands
+│   ├── LabelForm.tsx    # rename a turtle (PUT /label)
 │   ├── SeedForm.tsx     # set a turtle's position + heading (POST /seed)
 │   └── FleetMap.tsx     # top-down X/Z map
 ├── lib/
@@ -176,5 +186,6 @@ src/
 - [x] Top-down fleet map
 - [x] Turtle detail panel
 - [x] Seed a turtle's position and heading from the detail panel
+- [x] Rename a turtle from the detail panel
 - [ ] Sending commands (move, mine, return home) once the backend supports them
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)

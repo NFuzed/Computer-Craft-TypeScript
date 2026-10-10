@@ -1,6 +1,7 @@
 import type {z} from "zod";
 import {
     ApiErrorSchema,
+    type LabelRequest,
     type PositionSeed,
     PositionSeedSchema,
     type SeedRequest,
@@ -65,6 +66,19 @@ export function seedTurtle(id: number, seed: SeedRequest): Promise<PositionSeed>
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({source: "dashboard", ...seed}),
+    });
+}
+
+/**
+ * Renames a turtle (a null label clears it). The server queues the rename (202) and the turtle applies it with
+ * os.setComputerLabel on its next heartbeat; the turtle doesn't need to be registered yet.
+ */
+export function renameTurtle(id: number, label: string | null): Promise<TurtleStatus> {
+    const body: LabelRequest = {label};
+    return request(`/api/turtles/${id}/label`, TurtleStatusSchema, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
     });
 }
 

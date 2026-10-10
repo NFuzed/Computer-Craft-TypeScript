@@ -33,6 +33,7 @@ export function TurtleList({turtles, selectedId, onSelect}: Readonly<Props>) {
                   <span className="row-sub muted">
                     {t.position ? `${t.position.x}, ${t.position.y}, ${t.position.z}` : "no position"}
                       {t.pendingSeed && " · seed pending"}
+                      {t.pendingLabel && " · rename pending"}
                   </span>
                 </span>
                                 <span className="row-meta">

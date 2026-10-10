@@ -1,5 +1,5 @@
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
-import {fetchTurtles, seedTurtle} from "../api/client";
+import {fetchTurtles, renameTurtle, seedTurtle} from "../api/client";
 import type {DashboardEvent, SeedRequest, TurtleStatus} from "../api/schemas";
 
 export const turtlesQueryKey = ["turtles"] as const;
@@ -38,12 +38,33 @@ export function useSeedTurtle(turtleId: number) {
     });
 }
 
+/** PUTs a new label and shows it as pending on the turtle until the turtle registers with it. */
+export function useRenameTurtle(turtleId: number) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (label: string | null) => renameTurtle(turtleId, label),
+        onSuccess: (status) => {
+            queryClient.setQueryData<TurtleStatus[]>(turtlesQueryKey, (prev) =>
+                upsert(prev ?? [], turtleId, () => status),
+            );
+        },
+    });
+}
+
 function sortTurtles(turtles: TurtleStatus[]): TurtleStatus[] {
     return [...turtles].sort((a, b) => Number(b.online) - Number(a.online) || a.turtleId - b.turtleId);
 }
 
 function emptyStatus(turtleId: number): TurtleStatus {
-    return {turtleId, label: null, online: false, lastSeen: null, position: null, pendingSeed: null};
+    return {
+        turtleId,
+        label: null,
+        online: false,
+        lastSeen: null,
+        position: null,
+        pendingSeed: null,
+        pendingLabel: null
+    };
 }
 
 function upsert(
@@ -67,11 +88,14 @@ export function applyDashboardEvent(turtles: TurtleStatus[] | undefined, event: 
 
     switch (event.type) {
         case "turtle_connected":
+            // Mirrors FleetService.register: the turtle's own label is authoritative, and registering with the
+            // pending label acknowledges the rename
             return upsert(current, event.turtleId, (t) => ({
                 ...t,
-                label: event.label ?? t.label,
+                label: event.label,
                 online: true,
-                lastSeen: now
+                lastSeen: now,
+                pendingLabel: t.pendingLabel?.label === event.label ? null : t.pendingLabel,
             }));
         case "turtle_disconnected":
             return upsert(current, event.turtleId, (t) => ({...t, online: false}));

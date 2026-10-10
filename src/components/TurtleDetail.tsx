@@ -1,4 +1,5 @@
 import type {TurtleStatus} from "../api/schemas";
+import {LabelForm} from "./LabelForm";
 import {SeedForm} from "./SeedForm";
 import {formatAgo, formatTimestamp, turtleColor, turtleName, useNowSeconds} from "../lib/format";
 
@@ -20,6 +21,7 @@ export function TurtleDetail({turtle, onClose}: Readonly<Props>) {
 
     const pos = turtle.position;
     const pending = turtle.pendingSeed;
+    const pendingLabel = turtle.pendingLabel;
 
     return (
         <section className="panel turtle-detail">
@@ -43,6 +45,19 @@ export function TurtleDetail({turtle, onClose}: Readonly<Props>) {
                 <dt>Last seen</dt>
                 <dd title={formatTimestamp(turtle.lastSeen)}>{formatAgo(turtle.lastSeen, now)}</dd>
             </dl>
+
+            <h3>Label</h3>
+            {pendingLabel && (
+                <p className="seed-pending small">
+                    Waiting for the turtle to{" "}
+                    {pendingLabel.label == null ? "clear its label" : (
+                        <>rename itself to <span className="mono">{pendingLabel.label}</span></>
+                    )}{" "}
+                    (sent {formatAgo(pendingLabel.ts, now)}).
+                    {!turtle.online && " It will be picked up on the turtle's next heartbeat."}
+                </p>
+            )}
+            <LabelForm key={`label-${turtle.turtleId}`} turtle={turtle}/>
 
             <h3>Position</h3>
             {pos ? (
@@ -76,7 +91,7 @@ export function TurtleDetail({turtle, onClose}: Readonly<Props>) {
                     {!turtle.online && " It will be picked up on the turtle's next heartbeat."}
                 </p>
             )}
-            <SeedForm key={turtle.turtleId} turtle={turtle}/>
+            <SeedForm key={`seed-${turtle.turtleId}`} turtle={turtle}/>
 
             <h3>Commands</h3>
             <p className="muted">Commands (move, mine, return home) will appear here once the server supports them.</p>
