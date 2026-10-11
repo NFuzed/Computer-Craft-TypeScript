@@ -738,15 +738,18 @@ h3 {
     margin: 0;
 }
 
+/* Areas are named after the commands; the empty column sets Up and Down apart from the D-pad */
 .move-pad {
     display: grid;
-    grid-template-columns: repeat(3, 2.6rem) 4rem;
+    grid-template-columns: repeat(3, 2.6rem) 0.3rem 4rem;
+    grid-template-areas:
+        ".        forward .         . up"
+        "turnLeft back    turnRight . down";
     gap: 0.3rem;
-}
-
-/* Up and Down, set apart from the D-pad */
-.move-pad > :nth-child(4n) {
-    margin-left: 0.6rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
 }
 
 .secondary.command {
