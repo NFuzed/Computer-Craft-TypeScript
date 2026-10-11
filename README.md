@@ -12,7 +12,8 @@ to turtles directly.
                                           (Ktor :8000)    ◀──WebSocket /ws/dashboard──
 ```
 
-> **Status:** early. The turtle list, fleet map and detail panel work against `GET /api/turtles`. The `/ws/dashboard`
+> **Status:** early. The turtle list, fleet map, detail panel, inventory and commands work against `GET /api/turtles`.
+> The `/ws/dashboard`
 > client is built, but the server doesn't expose that endpoint yet. Until it does, the dashboard polls REST every 5s and
 > the header badge shows **polling**. It switches to **live** automatically once the socket is up.
 
@@ -98,7 +99,7 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 | `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                           |
 | `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                     |
 | `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline |
-| `POST` | `/api/turtles/{id}/commands`           | *(later)* queue a command for a turtle                                                                     |
+| `POST` | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline       |
 
 ```ts
 type TurtleStatus = {
@@ -115,6 +116,36 @@ type TurtleStatus = {
   } | null;
   pendingSeed: PositionSeed | null; // seeded but not yet applied by the turtle
     pendingLabel: PendingLabel | null; // renamed but not yet applied by the turtle
+    equipment: TurtleEquipment | null; // null until the turtle reports it
+    lastCommand: CommandResult | null; // the turtle's latest command since the server started
+};
+
+// POST /commands returns { commandId, command, ts }; the turtle's answer shows up as the status's lastCommand with
+// the same commandId. While waiting, the dashboard polls GET /api/turtles/{id} every 0.5s and gives up after 10s.
+// Commands: forward, back, up, down, turnLeft, turnRight, and dig / place / drop / suck / attack (+Up, +Down).
+// A command sent while the turtle is still running the previous one is lost, so the dashboard sends one at a time.
+type CommandResult = {
+    commandId: number;
+    command: string;
+    success: boolean;
+    error: string | null;           // the turtle API's reason, e.g. "Movement obstructed"
+    ts: number;
+};
+
+// The turtle reports its upgrades after connecting and whenever they change. The server works out `capabilities`
+// from them: "dig", "attack", "craft", "modem", "speaker", or an unknown peripheral's type (e.g. "geoScanner").
+// Every turtle can move, place, drop, suck and refuel, so those aren't listed.
+type TurtleEquipment = {
+    left: EquippedUpgrade | null;   // null = nothing equipped (or, when itemsKnown is false, maybe a tool)
+    right: EquippedUpgrade | null;
+    itemsKnown: boolean;            // false on CC: Tweaked versions without turtle.getEquippedLeft/Right
+    capabilities: string[];
+    ts: number;
+};
+
+type EquippedUpgrade = {
+    item: string | null;            // e.g. "minecraft:diamond_pickaxe"; null if unknown
+    peripheralTypes: string[];      // e.g. ["modem"]; empty for tools
 };
 
 // The server hands a rename to the turtle on its next heartbeat; the turtle calls os.setComputerLabel and
@@ -183,12 +214,14 @@ src/
 │   ├── schemas.ts       # zod schemas mirroring Kotlin protocol messages
 │   └── socket.ts        # /ws/dashboard connection + reconnect logic
 ├── hooks/
-│   ├── useTurtles.ts    # REST query + live socket updates merged into one store
+│   ├── useTurtles.ts    # REST query + live socket updates merged into one store; seed, rename, send commands
 │   ├── useInventory.ts  # polls a turtle's inventory, selects slots
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── TurtleList.tsx   # online/offline, label, last seen
-│   ├── TurtleDetail.tsx # position, heading, (later) fuel/inventory/commands
+│   ├── TurtleDetail.tsx # position, heading, label, seed, equipment
+│   ├── EquipmentSection.tsx # equipped upgrades and what the turtle can do
+│   ├── CommandPad.tsx   # move/turn pad and dig/place/drop/suck/attack buttons
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelForm.tsx    # rename a turtle (PUT /label)
@@ -214,5 +247,7 @@ src/
 - [x] Rename a turtle from the detail panel
 - [x] Show a turtle's inventory and select its slot
 - [x] Show a turtle's fuel and refuel it from the selected slot
-- [ ] Sending commands (move, mine, return home) once the backend supports them
+- [x] Show a turtle's equipment and which commands it can run
+- [x] Send single commands (move, turn, dig, place, drop, suck, attack), gated by the turtle's capabilities
+- [ ] Higher-level commands (mine an area, return home)
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)

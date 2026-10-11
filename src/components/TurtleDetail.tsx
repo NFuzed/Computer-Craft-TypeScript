@@ -1,4 +1,6 @@
 import type {TurtleStatus} from "../api/schemas";
+import {CommandPad} from "./CommandPad";
+import {EquipmentSection} from "./EquipmentSection";
 import {LabelForm} from "./LabelForm";
 import {SeedForm} from "./SeedForm";
 import {formatAgo, formatTimestamp, turtleColor, turtleName, useNowSeconds} from "../lib/format";
@@ -93,8 +95,10 @@ export function TurtleDetail({turtle, onClose}: Readonly<Props>) {
             )}
             <SeedForm key={`seed-${turtle.turtleId}`} turtle={turtle}/>
 
+            <EquipmentSection turtle={turtle}/>
+
             <h3>Commands</h3>
-            <p className="muted">Commands (move, mine, return home) will appear here once the server supports them.</p>
+            <CommandPad key={`commands-${turtle.turtleId}`} turtle={turtle}/>
         </section>
     );
 }

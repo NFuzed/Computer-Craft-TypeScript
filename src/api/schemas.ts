@@ -124,6 +124,76 @@ export const SelectSlotRequestSchema = z.object({
 });
 export type SelectSlotRequest = z.infer<typeof SelectSlotRequestSchema>;
 
+/**
+ * protocol.api.Capabilities: values in TurtleEquipment.capabilities. A peripheral the server has no name for shows up
+ * as its peripheral type instead (e.g. "geoScanner"), so capabilities aren't limited to these.
+ */
+export const Capabilities = {
+    DIG: "dig", // a pickaxe, shovel, axe or hoe
+    ATTACK: "attack", // any tool
+    CRAFT: "craft", // crafting table upgrade (peripheral type "workbench")
+    MODEM: "modem", // wireless or ender modem
+    SPEAKER: "speaker",
+} as const;
+
+/** What every turtle can do without upgrades, so the server leaves these out of `capabilities`. */
+export const BASE_CAPABILITIES = ["move", "place", "drop", "suck", "refuel"] as const;
+
+/** protocol.api.EquippedUpgrade: what a turtle has equipped on one side. */
+export const EquippedUpgradeSchema = z.object({
+    item: z.string().nullish().transform((i) => i ?? null), // e.g. "minecraft:diamond_pickaxe"; null if unknown
+    peripheralTypes: z.array(z.string()).nullish().transform((t) => t ?? []), // e.g. ["modem"]; empty for tools
+});
+export type EquippedUpgrade = z.infer<typeof EquippedUpgradeSchema>;
+
+/**
+ * protocol.api.TurtleEquipment: the upgrades a turtle last reported and the capabilities the server worked out from
+ * them. A null side has nothing equipped, but when `itemsKnown` is false (older CC: Tweaked) it may still hold a tool.
+ */
+export const TurtleEquipmentSchema = z.object({
+    left: EquippedUpgradeSchema.nullish().transform((u) => u ?? null),
+    right: EquippedUpgradeSchema.nullish().transform((u) => u ?? null),
+    itemsKnown: z.boolean(),
+    capabilities: z.array(z.string()),
+    ts: z.number(), // unix seconds
+});
+export type TurtleEquipment = z.infer<typeof TurtleEquipmentSchema>;
+
+/**
+ * protocol.api.Commands: what POST /api/turtles/{id}/commands can make a turtle do, one turtle API call each. Moves and
+ * turns need a seeded turtle; dig and attack need the matching capability.
+ */
+export const COMMANDS = [
+    "forward", "back", "up", "down", "turnLeft", "turnRight",
+    "dig", "digUp", "digDown", "place", "placeUp", "placeDown",
+    "drop", "dropUp", "dropDown", "suck", "suckUp", "suckDown",
+    "attack", "attackUp", "attackDown",
+] as const;
+export type Command = (typeof COMMANDS)[number];
+
+/** protocol.api.CommandRequest: body of POST /api/turtles/{id}/commands. */
+export interface CommandRequest {
+    command: Command;
+}
+
+/** protocol.api.TurtleCommand: returned with 202 once the command has been sent to the turtle. */
+export const TurtleCommandSchema = z.object({
+    commandId: z.number().int(),
+    command: z.string(),
+    ts: z.number(),
+});
+export type TurtleCommand = z.infer<typeof TurtleCommandSchema>;
+
+/** protocol.api.CommandResult: what happened when the turtle ran a command. */
+export const CommandResultSchema = z.object({
+    commandId: z.number().int(),
+    command: z.string(),
+    success: z.boolean(),
+    error: z.string().nullish().transform((e) => e ?? null), // e.g. "Movement obstructed"
+    ts: z.number(),
+});
+export type CommandResult = z.infer<typeof CommandResultSchema>;
+
 /** protocol.api.TurtleStatus */
 export const TurtleStatusSchema = z.object({
     turtleId: z.number().int(),
@@ -133,6 +203,8 @@ export const TurtleStatusSchema = z.object({
     position: TurtlePositionSchema.nullish().transform((p) => p ?? null),
     pendingSeed: PositionSeedSchema.nullish().transform((s) => s ?? null), // sent but not yet applied by the turtle
     pendingLabel: PendingLabelSchema.nullish().transform((l) => l ?? null), // rename not yet applied by the turtle
+    equipment: TurtleEquipmentSchema.nullish().transform((e) => e ?? null), // null until the turtle reports it
+    lastCommand: CommandResultSchema.nullish().transform((c) => c ?? null), // latest command since the server started
 });
 export type TurtleStatus = z.infer<typeof TurtleStatusSchema>;
 

@@ -1,6 +1,8 @@
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
-import {fetchTurtles, renameTurtle, seedTurtle} from "../api/client";
-import type {DashboardEvent, SeedRequest, TurtleStatus} from "../api/schemas";
+import {type QueryClient, useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {useEffect, useState} from "react";
+import {fetchTurtle, fetchTurtles, renameTurtle, seedTurtle, sendCommand} from "../api/client";
+import type {Command, DashboardEvent, SeedRequest, TurtleCommand, TurtleStatus} from "../api/schemas";
+import {inventoryQueryKey} from "./useInventory";
 
 export const turtlesQueryKey = ["turtles"] as const;
 
@@ -43,12 +45,75 @@ export function useRenameTurtle(turtleId: number) {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (label: string | null) => renameTurtle(turtleId, label),
-        onSuccess: (status) => {
-            queryClient.setQueryData<TurtleStatus[]>(turtlesQueryKey, (prev) =>
-                upsert(prev ?? [], turtleId, () => status),
-            );
-        },
+        onSuccess: (status) => storeStatus(queryClient, status),
     });
+}
+
+/** Polls the turtle this often while waiting for a command's result. */
+const COMMAND_POLL_MS = 500;
+/** Gives up on a command the turtle never answered (e.g. it arrived while the previous one was still running). */
+const COMMAND_TIMEOUT_MS = 10_000;
+
+/**
+ * Sends commands to a turtle. A command is `pending` until the turtle reports a `lastCommand` with its commandId, which
+ * becomes `result`. While waiting, the turtle is polled so its position and the result show up quickly, and its
+ * inventory is refreshed once the result arrives.
+ */
+export function useTurtleCommand(turtle: TurtleStatus) {
+    const {turtleId} = turtle;
+    const queryClient = useQueryClient();
+    // The command we last sent, and whether we stopped waiting for its result
+    const [sent, setSent] = useState<TurtleCommand | null>(null);
+    const [timedOut, setTimedOut] = useState(false);
+
+    const mutation = useMutation({
+        mutationFn: (command: Command) => sendCommand(turtleId, command),
+        onMutate: () => {
+            setSent(null);
+            setTimedOut(false);
+        },
+        onSuccess: setSent,
+    });
+
+    const result = sent != null && turtle.lastCommand?.commandId === sent.commandId ? turtle.lastCommand : null;
+    const awaiting = sent != null && result == null && !timedOut;
+
+    useEffect(() => {
+        if (!awaiting) return;
+        const poll = setInterval(() => {
+            fetchTurtle(turtleId)
+                .then((status) => storeStatus(queryClient, status))
+                .catch(() => undefined); // the next poll (or the timeout) deals with it
+        }, COMMAND_POLL_MS);
+        const timeout = setTimeout(() => setTimedOut(true), COMMAND_TIMEOUT_MS);
+        return () => {
+            clearInterval(poll);
+            clearTimeout(timeout);
+        };
+    }, [awaiting, turtleId, queryClient]);
+
+    // Digging, placing, dropping and sucking change the inventory, and moving burns fuel
+    const resultId = result?.commandId;
+    useEffect(() => {
+        if (resultId != null) void queryClient.invalidateQueries({queryKey: inventoryQueryKey(turtleId)});
+    }, [resultId, turtleId, queryClient]);
+
+    let optionalAwaiting = awaiting ? sent.command : null;
+    return {
+        send: (command: Command) => mutation.mutate(command),
+        /** The command being sent or waited on, if any. */
+        pendingCommand: mutation.isPending ? mutation.variables : optionalAwaiting,
+        result,
+        timedOut: timedOut && result == null ? sent?.command ?? null : null,
+        error: mutation.error,
+    };
+}
+
+/** Replaces a turtle's entry in the cached turtle list with a status fresh from the server. */
+function storeStatus(queryClient: QueryClient, status: TurtleStatus) {
+    queryClient.setQueryData<TurtleStatus[]>(turtlesQueryKey, (prev) =>
+        upsert(prev ?? [], status.turtleId, () => status),
+    );
 }
 
 function sortTurtles(turtles: TurtleStatus[]): TurtleStatus[] {
@@ -63,7 +128,9 @@ function emptyStatus(turtleId: number): TurtleStatus {
         lastSeen: null,
         position: null,
         pendingSeed: null,
-        pendingLabel: null
+        pendingLabel: null,
+        equipment: null,
+        lastCommand: null
     };
 }
 
