@@ -1,39 +1,23 @@
 :root {
-    --bg: #f4f5f7;
-    --panel: #ffffff;
-    --border: #dde0e5;
-    --text: #1c1f24;
-    --muted: #6b7280;
-    --accent: #2f6fe4;
-    --hover: #eef2fb;
-    --online: #1f9d55;
-    --offline: #9aa0a8;
-    --error-bg: #fdecec;
-    --error-text: #a12626;
-    --grid: #e6e8ec;
-    --grid-axis: #b9bec7;
-    --map-bg: #fafbfc;
-    color-scheme: light dark;
+    /* Navy and blue palette from the portfolio (nfuzed.github.io), which is dark only */
+    --bg: #070d1a;
+    --panel: #0a1222;
+    --border: rgba(55, 138, 221, 0.18);
+    --text: #e8f3ff;
+    --muted: #7d9ab8;
+    --accent: #378add;
+    --primary: #185fa5;
+    --primary-hover: #1f6fbd;
+    --hover: rgba(55, 138, 221, 0.1);
+    --online: #1d9e75;
+    --offline: #4a5d74;
+    --error-bg: rgba(226, 75, 74, 0.12);
+    --error-text: #f09595;
+    --grid: rgba(55, 138, 221, 0.1);
+    --grid-axis: rgba(55, 138, 221, 0.35);
+    --map-bg: #060b17;
+    color-scheme: dark;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg: #111317;
-        --panel: #1a1d23;
-        --border: #2b3038;
-        --text: #e6e8eb;
-        --muted: #8b929c;
-        --accent: #6c9cff;
-        --hover: #232833;
-        --online: #3ecf7a;
-        --offline: #626873;
-        --error-bg: #3a1b1b;
-        --error-text: #ffb3b3;
-        --grid: #232831;
-        --grid-axis: #3d4450;
-        --map-bg: #15181d;
-    }
 }
 
 * {
@@ -477,9 +461,13 @@ h3 {
     padding: 0.4rem 0.8rem;
     border: 0;
     border-radius: 6px;
-    background: var(--accent);
+    background: var(--primary);
     color: #fff;
     cursor: pointer;
+}
+
+.primary:not(:disabled):hover {
+    background: var(--primary-hover);
 }
 
 .primary:disabled {
