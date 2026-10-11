@@ -705,6 +705,74 @@ h3 {
     color: var(--online);
 }
 
+.capabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.75rem 0 0.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.capability {
+    padding: 0.1rem 0.55rem;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--accent);
+    font-size: 0.85rem;
+}
+
+.capability.base {
+    border-color: var(--border);
+    color: var(--muted);
+}
+
+.command-pad {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+}
+
+.command-pad p {
+    margin: 0;
+}
+
+.move-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 2.6rem) 4rem;
+    gap: 0.3rem;
+}
+
+/* Up and Down, set apart from the D-pad */
+.move-pad > :nth-child(4n) {
+    margin-left: 0.6rem;
+}
+
+.secondary.command {
+    padding: 0.3rem 0.5rem;
+}
+
+.command.pending {
+    border-style: dashed;
+    border-color: var(--accent);
+}
+
+.action-grid {
+    border-collapse: separate;
+    border-spacing: 0.3rem;
+    margin: -0.3rem;
+}
+
+.action-grid th {
+    font-weight: normal;
+    text-align: left;
+}
+
+.action-grid .command {
+    width: 100%;
+}
+
 /* Hidden on screen but still read by screen readers */
 .visually-hidden {
     position: absolute;

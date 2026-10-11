@@ -1,6 +1,8 @@
 import type {z} from "zod";
 import {
     ApiErrorSchema,
+    type Command,
+    type CommandRequest,
     type LabelRequest,
     type PositionSeed,
     PositionSeedSchema,
@@ -10,6 +12,8 @@ import {
     type SeedRequest,
     type SelectSlotRequest,
     SelectSlotRequestSchema,
+    type TurtleCommand,
+    TurtleCommandSchema,
     type TurtleInventory,
     TurtleInventorySchema,
     type TurtleStatus,
@@ -119,6 +123,19 @@ export function selectSlot(id: number, slot: number): Promise<SelectSlotRequest>
 export function refuelTurtle(id: number, count: number | null): Promise<RefuelCommand> {
     const body: RefuelRequest = {count};
     return request(`/api/turtles/${id}/refuel`, RefuelCommandSchema, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+    });
+}
+
+/**
+ * Tells a connected turtle to run one command (move, turn, dig...). Not queued: 409 if the turtle is offline. The
+ * outcome shows up as the turtle's `lastCommand` with the same commandId.
+ */
+export function sendCommand(id: number, command: Command): Promise<TurtleCommand> {
+    const body: CommandRequest = {command};
+    return request(`/api/turtles/${id}/commands`, TurtleCommandSchema, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body),
