@@ -165,9 +165,18 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const placed = turtles.filter((t): t is Placed => t.position != null);
     const dimensions = dimensionsByCount(placed);
 
-    const [chosenDimension, setChosenDimension] = useState<string | null>(null);
-    const selectedDimension =
-        placed.find((t) => t.turtleId === selectedId)?.position.dimension ?? null;
+    const selectedPlaced = placed.find((t) => t.turtleId === selectedId);
+    const selectedDimension = selectedPlaced && (selectedPlaced.position.dimension ?? UNKNOWN_DIMENSION);
+    const [chosenDimension, setChosenDimension] = useState<string | null>(selectedDimension ?? null);
+
+    // Selecting a turtle (or the selected turtle changing dimension) shows its dimension. The dropdown can still
+    // switch away afterwards; that choice holds until the selection changes again.
+    const followedKey = `${selectedId}:${selectedDimension}`;
+    const [lastFollowed, setLastFollowed] = useState(followedKey);
+    if (followedKey !== lastFollowed) {
+        setLastFollowed(followedKey);
+        if (selectedDimension) setChosenDimension(selectedDimension);
+    }
     const dimension =
         chosenDimension && dimensions.includes(chosenDimension) ? chosenDimension : (dimensions[0] ?? UNKNOWN_DIMENSION);
 
@@ -314,6 +323,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                 </fieldset>
                 {dimensions.length > 1 && (
                     <select
+                        className="select"
                         value={dimension}
                         onChange={(e) => setChosenDimension(e.target.value)}
                         aria-label="Dimension"
@@ -327,6 +337,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                 )}
                 {mode === "3d" && visible.length > 0 && (
                     <select
+                        className="select"
                         value={viewDistance}
                         onChange={(e) => chooseViewDistance(Number(e.target.value) as ViewDistance)}
                         aria-label="View distance"

@@ -28,6 +28,33 @@ export function useTurtle(id: number | null, {live}: { live: boolean }) {
     return {...query, data: id == null ? undefined : query.data?.find((t) => t.turtleId === id)};
 }
 
+/** Every world the server has recorded for a turtle, mapped to the dimensions recorded in it. Both sorted. */
+export type KnownPlaces = Map<string, string[]>;
+
+/**
+ * The worlds and dimensions turtles are in or are being seeded into, read from the turtle list so the seed form
+ * can offer them. A turtle with no world still contributes its dimension under the "" key.
+ */
+export function useKnownPlaces(): KnownPlaces {
+    const {data} = useQuery({queryKey: turtlesQueryKey, queryFn: fetchTurtles, select: knownPlaces});
+    return data ?? new Map();
+}
+
+function knownPlaces(turtles: TurtleStatus[]): KnownPlaces {
+    const places = new Map<string, Set<string>>();
+    for (const t of turtles) {
+        for (const p of [t.position, t.pendingSeed]) {
+            if (!p) continue;
+            const world = p.world ?? "";
+            const dimensions = places.get(world) ?? new Set<string>();
+            if (p.dimension) dimensions.add(p.dimension);
+            places.set(world, dimensions);
+        }
+    }
+    const byName = (a: string, b: string) => a.localeCompare(b);
+    return new Map([...places.keys()].sort(byName).map((w) => [w, [...places.get(w)!].sort(byName)]));
+}
+
 /** POSTs a position seed and shows it as pending on the turtle until the turtle acknowledges it. */
 export function useSeedTurtle(turtleId: number) {
     const queryClient = useQueryClient();
