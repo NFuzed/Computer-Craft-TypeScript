@@ -1,8 +1,13 @@
 import {useEffect, useState} from "react";
 
-/** Stable, distinct-ish colour per turtle id (golden-angle hue spacing). */
+/** Hue in degrees for a turtle id; golden-angle spacing keeps neighbouring ids distinct. */
+export function turtleHue(turtleId: number): number {
+    return (turtleId * 137.508) % 360;
+}
+
+/** Stable, distinct-ish colour per turtle id. Saturation and lightness match the 3D map's TURTLE_SATURATION/LIGHTNESS. */
 export function turtleColor(turtleId: number): string {
-    return `hsl(${(turtleId * 137.508) % 360} 65% 55%)`;
+    return `hsl(${turtleHue(turtleId)} 65% 55%)`;
 }
 
 export function turtleName(t: { turtleId: number; label: string | null }): string {
