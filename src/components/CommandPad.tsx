@@ -125,7 +125,7 @@ export function CommandPad({turtle}: Readonly<Props>) {
 
             {!turtle.online && <p className="muted small">Offline: commands can be sent once the turtle reconnects.</p>}
             {turtle.online && !canMove && (
-                <p className="muted small">Seed the turtle’s position above before moving it.</p>
+                <p className="muted small">Set the turtle’s position above before moving it.</p>
             )}
             {pendingCommand != null && (
                 <p className="seed-pending small">Waiting for the turtle to {commandLabel(pendingCommand)}…</p>
