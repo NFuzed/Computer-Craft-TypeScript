@@ -874,29 +874,10 @@ h3 {
     color: var(--online);
 }
 
-.capabilities {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin: 0.75rem 0 0.5rem;
-    padding: 0;
-    list-style: none;
-}
-
-.capability {
-    padding: 0.1rem 0.55rem;
-    border: 1px solid var(--accent);
-    border-radius: 999px;
-    color: var(--accent);
-    font-size: 0.85rem;
-}
-
-.capability.base {
-    border-color: var(--border);
-    color: var(--muted);
-}
-
 .command-pad {
+    /* The tile size every command button shares */
+    --tile: 4.2rem;
+    --tile-gap: 0.3rem;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
@@ -907,42 +888,145 @@ h3 {
     margin: 0;
 }
 
-/* Areas are named after the commands; the empty column sets Up and Down apart from the D-pad */
+/*
+ * Square, bevelled buttons like Minecraft's, in the dashboard's blues: a black outline, a light top-left edge and a dark
+ * bottom-right edge. Hovering lights them up in the accent blue, as Minecraft does; pressing flips the bevel.
+ */
+.mc-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.3rem;
+    border: 2px solid #000;
+    border-radius: 0;
+    background: #1c2c45;
+    box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.2), inset -2px -2px 0 rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+    cursor: pointer;
+}
+
+.mc-button:not(:disabled):hover {
+    background: #26446e;
+    border-color: var(--accent);
+}
+
+.mc-button:not(:disabled):active, .mc-button.selected {
+    background: var(--primary);
+    box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.45), inset -2px -2px 0 rgba(255, 255, 255, 0.2);
+}
+
+.mc-button.selected {
+    border-color: var(--accent);
+}
+
+.mc-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.mc-button:disabled {
+    background: #111a29;
+    box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.06), inset -2px -2px 0 rgba(0, 0, 0, 0.45);
+    color: var(--offline);
+    cursor: default;
+}
+
+.mc-button.pending {
+    border-style: dashed;
+    border-color: var(--accent);
+}
+
+/* Down, forward, Up on top; turn left, back, turn right below */
+/* Movement and actions each sit in one of these, centred and sized to their buttons */
+.command-panel {
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 6px;
+    /* The inventory grid's trim, in the dashboard's blues: light top-left edge, dark bottom-right edge */
+    background: #14223a;
+    border: 2px solid;
+    border-color: #3d5a80 #050a14 #050a14 #3d5a80;
+    border-radius: 3px;
+}
+
 .move-pad {
     display: grid;
-    grid-template-columns: repeat(3, 2.6rem) 0.3rem 4rem;
-    grid-template-areas:
-        ".        forward .         . up"
-        "turnLeft back    turnRight . down";
-    gap: 0.3rem;
+    grid-template-columns: repeat(3, var(--tile));
+    grid-auto-rows: var(--tile);
+    gap: var(--tile-gap);
+    justify-content: center;
     min-width: 0;
     margin: 0;
     padding: 0;
     border: 0;
 }
 
-.secondary.command {
-    padding: 0.3rem 0.5rem;
+.move-pad .command {
+    font-size: 1.3rem;
 }
 
-.command.pending {
-    border-style: dashed;
-    border-color: var(--accent);
+.action-pad {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
 }
 
-.action-grid {
-    border-collapse: separate;
-    border-spacing: 0.3rem;
-    margin: -0.3rem;
+.action-row {
+    display: flex;
+    gap: var(--tile-gap);
 }
 
-.action-grid th {
-    font-weight: normal;
-    text-align: left;
+/* Spaced from the top row like tiles within a row */
+.action-row:not(.narrow) {
+    padding-bottom: var(--tile-gap);
 }
 
-.action-grid .command {
-    width: 100%;
+/*
+ * Sits over the wider row's bottom edge, hiding it between the two, so the trim steps in around the last two tiles
+ * instead of drawing a line through the middle
+ */
+.action-row.narrow {
+    position: relative;
+    margin-top: -2px;
+    padding-top: 0;
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.mc-button.action-tile {
+    flex-direction: column;
+    gap: 0.2rem;
+    width: var(--tile);
+    height: var(--tile);
+}
+
+.action-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.7));
+}
+
+.action-aims {
+    margin-top: 0.5rem;
+    display: grid;
+    grid-template-columns: repeat(3, var(--tile));
+    grid-auto-rows: var(--tile);
+    gap: var(--tile-gap);
+    justify-content: center;
+}
+
+.action-aims .command {
+    line-height: 1.2;
+    text-align: center;
 }
 
 /* Hidden on screen but still read by screen readers */

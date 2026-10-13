@@ -45,7 +45,7 @@ export function TurtleDetail({turtle, onClose}: Readonly<Props>) {
 
             <LabelPositionSection key={`label-position-${turtle.turtleId}`} turtle={turtle} now={now}/>
 
-            <EquipmentSection turtle={turtle}/>
+            <EquipmentSection key={`equipment-${turtle.turtleId}`} turtle={turtle}/>
 
             <h3>Commands</h3>
             <CommandPad key={`commands-${turtle.turtleId}`} turtle={turtle}/>

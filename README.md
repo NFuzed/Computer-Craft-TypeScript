@@ -97,6 +97,7 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 | `GET`  | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                                 |
 | `POST` | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`          |
 | `PUT`  | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)       |
+| `PUT`  | `/api/turtles/{id}/equipment`          | `TurtleStatus`. Body: `{ left, right }` (`EquippedUpgrade \| null`). `404` if unknown                          |
 | `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                               |
 | `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                         |
 | `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline     |
@@ -137,11 +138,14 @@ type CommandResult = {
 // The turtle reports its upgrades after connecting and whenever they change. The server works out `capabilities`
 // from them: "dig", "attack", "craft", "modem", "speaker", or an unknown peripheral's type (e.g. "geoScanner").
 // Every turtle can move, place, drop, suck and refuel, so those aren't listed.
+// Older CC: Tweaked can't see tools, so the dashboard can seed the equipment (PUT /equipment). A seed is kept until
+// the turtle reports with itemsKnown: true; seeding both sides as empty sets it back to bare.
 type TurtleEquipment = {
     left: EquippedUpgrade | null;   // null = nothing equipped (or, when itemsKnown is false, maybe a tool)
     right: EquippedUpgrade | null;
     itemsKnown: boolean;            // false on CC: Tweaked versions without turtle.getEquippedLeft/Right
     capabilities: string[];
+    seeded: boolean;                // set from the dashboard rather than reported
     ts: number;
 };
 
@@ -235,8 +239,9 @@ src/
 │   ├── TurtleList.tsx   # turtles in the chosen world by dimension: online/offline, label, last seen
 │   ├── TurtleDetail.tsx # status, label, position, equipment, commands
 │   ├── LabelPositionSection.tsx # label + reported position, with an Edit button that opens LabelPositionForm
-│   ├── EquipmentSection.tsx # equipped upgrades and what the turtle can do
-│   ├── CommandPad.tsx   # move/turn pad and dig/place/drop/suck/attack buttons
+│   ├── EquipmentSection.tsx # equipped upgrades, with a Seed button that opens EquipmentForm
+│   ├── EquipmentForm.tsx # pick each side's upgrade from a list or type an item id (PUT /equipment)
+│   ├── CommandPad.tsx   # move/turn pad, and dig/place/drop/suck/attack tiles aimed by an Up/Front/Down switch
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form

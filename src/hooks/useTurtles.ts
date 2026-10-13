@@ -1,7 +1,14 @@
 import {type QueryClient, useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useEffect, useState} from "react";
-import {fetchTurtle, fetchTurtles, renameTurtle, seedTurtle, sendCommand} from "../api/client";
-import type {Command, DashboardEvent, SeedRequest, TurtleCommand, TurtleStatus} from "../api/schemas";
+import {fetchTurtle, fetchTurtles, renameTurtle, seedEquipment, seedTurtle, sendCommand} from "../api/client";
+import type {
+    Command,
+    DashboardEvent,
+    EquipmentSeedRequest,
+    SeedRequest,
+    TurtleCommand,
+    TurtleStatus,
+} from "../api/schemas";
 import {inventoryQueryKey} from "./useInventory";
 import {worldMapQueryKey} from "./useWorldMap";
 
@@ -73,6 +80,15 @@ export function useRenameTurtle(turtleId: number) {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (label: string | null) => renameTurtle(turtleId, label),
+        onSuccess: (status) => storeStatus(queryClient, status),
+    });
+}
+
+/** PUTs what the turtle has equipped; the server stores it right away, so the returned status already shows it. */
+export function useSeedEquipment(turtleId: number) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (equipment: EquipmentSeedRequest) => seedEquipment(turtleId, equipment),
         onSuccess: (status) => storeStatus(queryClient, status),
     });
 }
