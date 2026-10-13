@@ -15,7 +15,8 @@ to turtles directly.
 > **Status:** early. The turtle list, fleet map, detail panel, inventory and commands work against `GET /api/turtles`.
 > The `/ws/dashboard`
 > client is built, but the server doesn't expose that endpoint yet. Until it does, the dashboard polls REST every 5s and
-> the header badge shows **polling**. It switches to **live** automatically once the socket is up.
+> switches to live updates automatically once the socket is up. The header pill shows **Running** (green) while the
+> server is reachable either way, and **Offline** (grey) when it isn't.
 
 ---
 
