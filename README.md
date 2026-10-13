@@ -231,7 +231,8 @@ src/
 │   ├── useWorldMap.ts   # polls the world map around the turtles for the 3D map
 │   └── useDashboardSocket.ts
 ├── components/
-│   ├── TurtleList.tsx   # online/offline, label, last seen
+│   ├── WorldList.tsx    # the worlds turtles are in; choosing one limits the list and map to it
+│   ├── TurtleList.tsx   # turtles in the chosen world by dimension: online/offline, label, last seen
 │   ├── TurtleDetail.tsx # status, label, position, equipment, commands
 │   ├── LabelPositionSection.tsx # label + reported position, with an Edit button that opens LabelPositionForm
 │   ├── EquipmentSection.tsx # equipped upgrades and what the turtle can do
@@ -242,6 +243,7 @@ src/
 │   ├── FleetMap.tsx     # top-down X/Z map, and the switch to the 3D map
 │   └── FleetMap3D.tsx   # three.js map of the turtles and the blocks they've seen
 ├── lib/
+│   ├── fleet.ts         # a turtle's world and dimension, grouping turtles by them
 │   ├── format.ts        # colours, names, "x ago" timestamps
 │   └── world.ts         # block colours and which blocks the 3D map draws
 ├── App.tsx

@@ -176,13 +176,26 @@ h3 {
     min-width: 0;
 }
 
-.turtle-list ul {
+.row-list {
     list-style: none;
     margin: 0.75rem 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+
+.turtle-group .row-list {
+    margin-top: 0.3rem;
+}
+
+.group-heading {
+    margin: 0.9rem 0 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
 }
 
 .row {
