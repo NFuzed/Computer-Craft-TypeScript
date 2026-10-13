@@ -6,29 +6,26 @@ import {TurtleList} from "./components/TurtleList";
 import {useDashboardSocket} from "./hooks/useDashboardSocket";
 import {useTurtles} from "./hooks/useTurtles";
 
-const CONNECTION_LABEL = {
-    open: "live",
-    connecting: "connecting…",
-    closed: "polling",
-} as const;
-
 export function App() {
     const socketState = useDashboardSocket();
     const live = socketState === "open";
     const {data: turtles = [], error, isPending} = useTurtles({live});
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const selected = turtles.find((t) => t.turtleId === selectedId);
+    // The server counts as running if either the live socket or the REST fallback is getting through.
+    const serverOnline = live || (isPending ? null : !error);
 
     return (
         <div className="app">
             <header className="topbar">
                 <h1>Turtle Fleet</h1>
-                <span
-                    className={`connection ${socketState}`}
-                    title={live ? "Receiving live updates over /ws/dashboard" : "Live socket unavailable; polling /api/turtles every 5s"}
+                <div
+                    className={`status-pill${serverOnline ? " is-online" : ""}`}
+                    title={statusTitle(serverOnline, live)}
                 >
-          {CONNECTION_LABEL[socketState]}
-        </span>
+                    <span className="status-pill__dot"/>
+                    {statusLabel(serverOnline)}
+                </div>
             </header>
 
             {error && (
@@ -53,4 +50,14 @@ export function App() {
             </main>
         </div>
     );
+}
+
+function statusLabel(online: boolean | null): string {
+    if (online === null) return "Checking…";
+    return online ? "Running" : "Offline";
+}
+
+function statusTitle(online: boolean | null, live: boolean): string {
+    if (!online) return "Can't reach the control server on :8000";
+    return live ? "Receiving live updates over /ws/dashboard" : "Live socket unavailable; polling /api/turtles every 5s";
 }
