@@ -295,6 +295,88 @@ h3 {
     cursor: grabbing;
 }
 
+.map-mode {
+    display: inline-flex;
+    min-width: 0; /* fieldsets default to min-width: min-content */
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.map-mode button {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.65rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.map-mode button + button {
+    border-left: 1px solid var(--border);
+}
+
+.map-mode button:hover {
+    background: var(--hover);
+    color: var(--text);
+}
+
+.map-mode button[aria-pressed="true"] {
+    background: var(--primary);
+    color: var(--text);
+}
+
+.map-3d {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--map-bg);
+    border-radius: 6px;
+    overflow: hidden;
+    touch-action: none; /* pointer drags orbit the camera instead of scrolling the page */
+    user-select: none;
+}
+
+/* The canvas is absolutely placed, so its size never feeds back into the container it's measured from. */
+.map-3d canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    cursor: grab;
+}
+
+.map-3d canvas:active {
+    cursor: grabbing;
+}
+
+.map-3d-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none; /* clicks and drags go through to the canvas */
+}
+
+.map-3d-label {
+    margin-top: -0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text);
+    text-shadow: 0 0 3px var(--map-bg), 0 0 3px var(--map-bg);
+    white-space: nowrap;
+}
+
+.map-3d-label.offline {
+    opacity: 0.55;
+}
+
+.map-3d-compass {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--muted);
+}
+
 .secondary.map-recentre {
     margin-left: auto;
     padding: 0.2rem 0.7rem;

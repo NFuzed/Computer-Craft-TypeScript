@@ -1,6 +1,7 @@
-import {type JSX, type PointerEvent, useEffect, useLayoutEffect, useRef, useState} from "react";
+import {type JSX, lazy, type PointerEvent, Suspense, useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {TurtleStatus} from "../api/schemas";
 import {turtleColor, turtleName} from "../lib/format";
+import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 
 interface Props {
     turtles: TurtleStatus[];
@@ -9,6 +10,11 @@ interface Props {
 }
 
 type Placed = TurtleStatus & { position: NonNullable<TurtleStatus["position"]> };
+
+type MapMode = "top" | "3d";
+
+// three.js is most of the bundle, so it only loads once someone opens the 3D view.
+const FleetMap3D = lazy(() => import("./FleetMap3D").then((m) => ({default: m.FleetMap3D})));
 
 /** What the map is looking at: a centre point and how many blocks fit across the map's shorter side. */
 interface Frame {
@@ -31,11 +37,11 @@ interface Drag {
 }
 
 const UNKNOWN_DIMENSION = "unknown";
+const MODE_KEY = "fleet-map-mode";
 const MIN_SPAN = 16; // blocks; keeps a lone turtle from filling the whole map
 const SELECTED_SPAN = 50; // blocks shown around the selected turtle
 const MIN_ZOOM_SPAN = 5;
 const MAX_ZOOM_SPAN = 20000;
-const ZOOM_SPEED = 0.0015; // per wheel pixel; one mouse notch (100px) zooms by about 16%
 const DRAG_THRESHOLD = 4; // px; a smaller movement is still a click
 
 // Screen sizes, in px. The SVG is drawn in blocks, so these are converted with the current blocks-per-pixel.
@@ -62,13 +68,6 @@ function labelStep(blocksPerPixel: number, grid: number): number {
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
-}
-
-/** Wheel delta in pixels; Firefox reports lines (deltaMode 1) for mouse wheels. */
-function wheelPixels(e: WheelEvent): number {
-    if (e.deltaMode === 1) return e.deltaY * 16;
-    if (e.deltaMode === 2) return e.deltaY * 400;
-    return e.deltaY;
 }
 
 /** Dimensions that have turtles in them, busiest first. */
@@ -118,6 +117,15 @@ function viewFor(frame: Frame, size: Size) {
     };
 }
 
+/** The view the user last picked. Storage can be unavailable (private windows, blocked site data). */
+function storedMode(): MapMode {
+    try {
+        return localStorage.getItem(MODE_KEY) === "3d" ? "3d" : "top";
+    } catch {
+        return "top";
+    }
+}
+
 /** The element's size in pixels, or null while it has no area. */
 function useElementSize(element: Element | null): Size | null {
     const [size, setSize] = useState<Size | null>(null);
@@ -144,6 +152,19 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const dimension =
         chosenDimension && dimensions.includes(chosenDimension) ? chosenDimension : (dimensions[0] ?? UNKNOWN_DIMENSION);
 
+    const [mode, setMode] = useState<MapMode>(storedMode);
+
+    function chooseMode(next: MapMode) {
+        setMode(next);
+        // The 3D map is rebuilt each time it opens, so a camera the user moved is gone: follow again.
+        if (next === "3d") setMoved3d(null);
+        try {
+            localStorage.setItem(MODE_KEY, next);
+        } catch {
+            // Not remembered; the map still switches.
+        }
+    }
+
     const visible = placed.filter((t) => (t.position.dimension ?? UNKNOWN_DIMENSION) === dimension);
     const selected = visible.find((t) => t.turtleId === selectedId);
 
@@ -160,6 +181,10 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const [panned, setPanned] = useState<{ key: string; frame: Frame } | null>(null);
     const manualFrame = panned?.key === followKey ? panned.frame : null;
     const frame = autoFrame && (manualFrame ?? autoFrame);
+
+    // The 3D camera follows the same way: until the user moves it, for whatever was being followed at the time.
+    const [moved3d, setMoved3d] = useState<string | null>(null);
+    const following3d = moved3d !== followKey;
 
     const [dragging, setDragging] = useState(false);
     const drag = useRef<Drag | null>(null);
@@ -182,7 +207,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
             // Offset of the cursor from the centre of the map, in px.
             const ox = e.clientX - rect.left - rect.width / 2;
             const oy = e.clientY - rect.top - rect.height / 2;
-            const factor = Math.exp(wheelPixels(e) * ZOOM_SPEED);
+            const factor = Math.exp(wheelPixels(e) * WHEEL_ZOOM_SPEED);
             // Functional update: several wheel events can arrive before the next render.
             setPanned((prev) => {
                 const base = prev?.key === followKey ? prev.frame : autoFrame;
@@ -202,6 +227,11 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     // the turtle is already in view, and jumping would move it out from under the cursor.
     function selectOnMap(turtleId: number) {
         if (frame) setPanned({key: followKeyFor(turtleId), frame});
+        onSelect(turtleId);
+    }
+
+    function selectOn3d(turtleId: number) {
+        setMoved3d(followKeyFor(turtleId));
         onSelect(turtleId);
     }
 
@@ -241,6 +271,15 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
         <section className="panel fleet-map">
             <header className="map-header">
                 <h2>Fleet map</h2>
+                <fieldset className="map-mode">
+                    <legend className="visually-hidden">Map view</legend>
+                    <button type="button" aria-pressed={mode === "top"} onClick={() => chooseMode("top")}>
+                        Top-down
+                    </button>
+                    <button type="button" aria-pressed={mode === "3d"} onClick={() => chooseMode("3d")}>
+                        3D
+                    </button>
+                </fieldset>
                 {dimensions.length > 1 && (
                     <select
                         value={dimension}
@@ -254,13 +293,21 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                         ))}
                     </select>
                 )}
-                {view && (
+                {mode === "3d" && visible.length > 0 && (
+                    <span className="muted small">drag to orbit, right-drag to pan, scroll to zoom</span>
+                )}
+                {mode === "3d" && visible.length > 0 && !following3d && (
+                    <button type="button" className="secondary map-recentre" onClick={() => setMoved3d(null)}>
+                        Recentre
+                    </button>
+                )}
+                {mode === "top" && view && (
                     <span className="muted small">
                         grid: {view.gridStep === 1 ? "1 block" : `${view.gridStep} blocks`} · north ↑ · drag to pan,
                         scroll to zoom
                     </span>
                 )}
-                {view && manualFrame && (
+                {mode === "top" && view && manualFrame && (
                     <button type="button" className="secondary map-recentre" onClick={() => setPanned(null)}>
                         Recentre
                     </button>
@@ -271,7 +318,18 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                 <p className="muted small">The selected turtle is in {selectedDimension}.</p>
             )}
 
-            {visible.length > 0 ? (
+            {visible.length > 0 && mode === "3d" && (
+                <Suspense fallback={<p className="muted empty">Loading 3D map…</p>}>
+                    <FleetMap3D
+                        turtles={visible}
+                        selectedId={selectedId}
+                        following={following3d}
+                        onCameraMoved={() => setMoved3d(followKey)}
+                        onSelect={selectOn3d}
+                    />
+                </Suspense>
+            )}
+            {visible.length > 0 && mode === "top" && (
                 <svg
                     ref={setSvg}
                     className={dragging ? "map-svg dragging" : "map-svg"}
@@ -305,9 +363,8 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                         </>
                     )}
                 </svg>
-            ) : (
-                <p className="muted empty">No turtle positions yet.</p>
             )}
+            {visible.length === 0 && <p className="muted empty">No turtle positions yet.</p>}
         </section>
     );
 }
