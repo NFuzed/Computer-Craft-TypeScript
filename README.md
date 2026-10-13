@@ -91,17 +91,17 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 
 ### REST
 
-| Method | Path                                   | Response                                                                                                   |
-|--------|----------------------------------------|------------------------------------------------------------------------------------------------------------|
-| `GET`  | `/api/turtles`                         | `TurtleStatus[]`                                                                                           |
-| `GET`  | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                             |
-| `POST` | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`      |
-| `PUT`  | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)   |
-| `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                           |
-| `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                     |
-| `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline |
-| `POST` | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline       |
-| `GET`  | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, at most 256 apart per axis), optional `world`, `dimension`    |
+| Method | Path                                   | Response                                                                                                       |
+|--------|----------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/api/turtles`                         | `TurtleStatus[]`                                                                                               |
+| `GET`  | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                                 |
+| `POST` | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`          |
+| `PUT`  | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)       |
+| `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                               |
+| `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                         |
+| `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline     |
+| `POST` | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline           |
+| `GET`  | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, ≤256 apart per axis), optional `world`, `dimension`, `excludeAir` |
 
 ```ts
 type TurtleStatus = {
@@ -177,8 +177,9 @@ type RefuelResult = {
 };
 
 // The blocks turtles have seen (they inspect in front, above and below after connecting, being seeded and every
-// command). Empty cells are "minecraft:air"; cells nobody has seen are left out. The 3D map polls this every 5s for
-// a 256-block box around the selected turtle (or the middle of the fleet), moved in 16-block steps.
+// command). Empty cells are "minecraft:air"; cells nobody has seen are left out. The 3D map asks for excludeAir=true
+// and a box of whole 16-block chunks around the selected turtle (or the middle of the fleet): 1, 2, 4 or 7 chunks each
+// way, picked in the map header. It polls every 5s, and refetches as soon as a dashboard command's result arrives.
 type MapRegion = {
     world: string | null;
     dimension: string | null;
