@@ -1,5 +1,6 @@
 import {type JSX, lazy, type PointerEvent, Suspense, useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {TurtleStatus} from "../api/schemas";
+import {mapBoxFor, useWorldMap} from "../hooks/useWorldMap";
 import {turtleColor, turtleName} from "../lib/format";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 
@@ -168,6 +169,9 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const visible = placed.filter((t) => (t.position.dimension ?? UNKNOWN_DIMENSION) === dimension);
     const selected = visible.find((t) => t.turtleId === selectedId);
 
+    // Only the 3D map draws blocks, so the world map is only fetched while it's open.
+    const worldMap = useWorldMap(mode === "3d" ? mapBoxFor(visible, selected) : null);
+
     // The viewBox matches the element's shape, so the map needs the element's size in pixels.
     const [svg, setSvg] = useState<SVGSVGElement | null>(null);
     const size = useElementSize(svg);
@@ -326,6 +330,8 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                         following={following3d}
                         onCameraMoved={() => setMoved3d(followKey)}
                         onSelect={selectOn3d}
+                        blocks={worldMap.data?.blocks}
+                        blocksError={worldMap.isError}
                     />
                 </Suspense>
             )}

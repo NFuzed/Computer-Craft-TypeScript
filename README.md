@@ -101,6 +101,7 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 | `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                     |
 | `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline |
 | `POST` | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline       |
+| `GET`  | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, at most 256 apart per axis), optional `world`, `dimension`    |
 
 ```ts
 type TurtleStatus = {
@@ -175,6 +176,15 @@ type RefuelResult = {
     ts: number;
 };
 
+// The blocks turtles have seen (they inspect in front, above and below after connecting, being seeded and every
+// command). Empty cells are "minecraft:air"; cells nobody has seen are left out. The 3D map polls this every 5s for
+// a 256-block box around the selected turtle (or the middle of the fleet), moved in 16-block steps.
+type MapRegion = {
+    world: string | null;
+    dimension: string | null;
+    blocks: { x: number; y: number; z: number; name: string; turtleId: number | null; ts: number }[];
+};
+
 // Turtles have no GPS: they dead-reckon from a seed set on the dashboard. The server hands the seed
 // to the turtle on its next heartbeat and clears it when a position report carries the same seedId.
 type PositionSeed = {
@@ -217,6 +227,7 @@ src/
 ├── hooks/
 │   ├── useTurtles.ts    # REST query + live socket updates merged into one store; seed, rename, send commands
 │   ├── useInventory.ts  # polls a turtle's inventory, selects slots
+│   ├── useWorldMap.ts   # polls the world map around the turtles for the 3D map
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── TurtleList.tsx   # online/offline, label, last seen
@@ -227,9 +238,11 @@ src/
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form
-│   └── FleetMap.tsx     # top-down X/Z map
+│   ├── FleetMap.tsx     # top-down X/Z map, and the switch to the 3D map
+│   └── FleetMap3D.tsx   # three.js map of the turtles and the blocks they've seen
 ├── lib/
-│   └── format.ts        # colours, names, "x ago" timestamps
+│   ├── format.ts        # colours, names, "x ago" timestamps
+│   └── world.ts         # block colours and which blocks the 3D map draws
 ├── App.tsx
 └── main.tsx
 ```
@@ -243,6 +256,7 @@ src/
 - [x] Turtle list from `GET /api/turtles`
 - [ ] Live updates from `/ws/dashboard` (client done; waiting on the server endpoint)
 - [x] Top-down fleet map
+- [x] 3D fleet map with the blocks turtles have seen
 - [x] Turtle detail panel
 - [x] Seed a turtle's position and heading from the detail panel
 - [x] Rename a turtle from the detail panel

@@ -3,6 +3,7 @@ import {useEffect, useState} from "react";
 import {fetchTurtle, fetchTurtles, renameTurtle, seedTurtle, sendCommand} from "../api/client";
 import type {Command, DashboardEvent, SeedRequest, TurtleCommand, TurtleStatus} from "../api/schemas";
 import {inventoryQueryKey} from "./useInventory";
+import {worldMapQueryKey} from "./useWorldMap";
 
 export const turtlesQueryKey = ["turtles"] as const;
 
@@ -92,10 +93,13 @@ export function useTurtleCommand(turtle: TurtleStatus) {
         };
     }, [awaiting, turtleId, queryClient]);
 
-    // Digging, placing, dropping and sucking change the inventory, and moving burns fuel
+    // Digging, placing, dropping and sucking change the inventory, and moving burns fuel. The turtle also reports what's
+    // around it before sending the result, so the world map already has the cells it can now see.
     const resultId = result?.commandId;
     useEffect(() => {
-        if (resultId != null) void queryClient.invalidateQueries({queryKey: inventoryQueryKey(turtleId)});
+        if (resultId == null) return;
+        void queryClient.invalidateQueries({queryKey: inventoryQueryKey(turtleId)});
+        void queryClient.invalidateQueries({queryKey: worldMapQueryKey});
     }, [resultId, turtleId, queryClient]);
 
     let optionalAwaiting = awaiting ? sent.command : null;
