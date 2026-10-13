@@ -8,6 +8,7 @@ import {
     type ViewDistance,
     viewSpan,
 } from "../hooks/useWorldMap";
+import {groupBy, turtleDimension, UNKNOWN_DIMENSION} from "../lib/fleet";
 import {turtleColor, turtleName} from "../lib/format";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 
@@ -44,7 +45,6 @@ interface Drag {
     moved: boolean;
 }
 
-const UNKNOWN_DIMENSION = "unknown";
 const MODE_KEY = "fleet-map-mode";
 const VIEW_DISTANCE_KEY = "fleet-map-view-distance";
 const MIN_SPAN = 16; // blocks; keeps a lone turtle from filling the whole map
@@ -81,12 +81,7 @@ function clamp(value: number, min: number, max: number): number {
 
 /** Dimensions that have turtles in them, busiest first. */
 function dimensionsByCount(placed: Placed[]): string[] {
-    const counts = new Map<string, number>();
-    for (const t of placed) {
-        const d = t.position.dimension ?? UNKNOWN_DIMENSION;
-        counts.set(d, (counts.get(d) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d);
+    return groupBy(placed, turtleDimension).map(([d]) => d);
 }
 
 /** The frame the map shows when the user hasn't moved it: the selected turtle, else every visible turtle. */
@@ -166,7 +161,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const dimensions = dimensionsByCount(placed);
 
     const selectedPlaced = placed.find((t) => t.turtleId === selectedId);
-    const selectedDimension = selectedPlaced && (selectedPlaced.position.dimension ?? UNKNOWN_DIMENSION);
+    const selectedDimension = selectedPlaced && turtleDimension(selectedPlaced);
     const [chosenDimension, setChosenDimension] = useState<string | null>(selectedDimension ?? null);
 
     // Selecting a turtle (or the selected turtle changing dimension) shows its dimension. The dropdown can still
@@ -193,7 +188,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
         }
     }
 
-    const visible = placed.filter((t) => (t.position.dimension ?? UNKNOWN_DIMENSION) === dimension);
+    const visible = placed.filter((t) => turtleDimension(t) === dimension);
     const selected = visible.find((t) => t.turtleId === selectedId);
 
     // Only the 3D map draws blocks, so the world map is only fetched while it's open.
