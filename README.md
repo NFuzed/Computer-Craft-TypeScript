@@ -219,13 +219,13 @@ src/
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── TurtleList.tsx   # online/offline, label, last seen
-│   ├── TurtleDetail.tsx # position, heading, label, seed, equipment
+│   ├── TurtleDetail.tsx # status, label, position, equipment, commands
+│   ├── LabelPositionSection.tsx # label + reported position, with an Edit button that opens LabelPositionForm
 │   ├── EquipmentSection.tsx # equipped upgrades and what the turtle can do
 │   ├── CommandPad.tsx   # move/turn pad and dig/place/drop/suck/attack buttons
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
-│   ├── LabelForm.tsx    # rename a turtle (PUT /label)
-│   ├── SeedForm.tsx     # set a turtle's position + heading (POST /seed)
+│   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form
 │   └── FleetMap.tsx     # top-down X/Z map
 ├── lib/
 │   └── format.ts        # colours, names, "x ago" timestamps
