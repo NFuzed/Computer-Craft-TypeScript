@@ -1,11 +1,11 @@
-import {useEffect, useLayoutEffect, useRef} from "react";
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from "react";
 import * as THREE from "three";
 import {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import {CSS2DObject, CSS2DRenderer} from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import type {TurtleStatus} from "../api/schemas";
-import {turtleHue, turtleName} from "../lib/format";
+import type {KnownBlock, TurtleStatus} from "../api/schemas";
+import {formatAgo, itemDisplayName, turtleHue, turtleName} from "../lib/format";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
-import {blockHue, type WorldBlock} from "../lib/world";
+import {blockColor, blockHue, isDrawnBlock, isTranslucent} from "../lib/world";
 
 type Placed = TurtleStatus & { position: NonNullable<TurtleStatus["position"]> };
 
@@ -17,7 +17,10 @@ interface Props {
     /** Called when the user orbits, pans or zooms, so the parent can stop following and offer a Recentre. */
     onCameraMoved: () => void;
     onSelect: (id: number) => void;
-    blocks?: WorldBlock[];
+    /** What the turtles have seen around them, from the server's world map. */
+    blocks?: KnownBlock[];
+    /** Whether the world map couldn't be fetched. */
+    blocksError?: boolean;
 }
 
 /** Everything created once per mounted map. */
@@ -40,6 +43,10 @@ const SELECTED_COLOR = 0xe8f3ff; // --text
 const TURTLE_SATURATION = 0.65; // matches turtleColor()
 const TURTLE_LIGHTNESS = 0.55;
 const OFFLINE_OPACITY = 0.45;
+const BLOCK_SATURATION = 0.35; // for blocks without a known colour
+const BLOCK_LIGHTNESS = 0.45;
+const BLOCK_JITTER = 0.03; // lightness varies this much per cell, so neighbouring blocks of one kind stay apart
+const TRANSLUCENT_OPACITY = 0.4;
 
 const DRAG_THRESHOLD = 4; // px; a smaller movement is still a click
 const ZOOM_EASE_MS = 70; // time constant of the wheel zoom easing; most of a notch lands within ~150 ms
@@ -65,6 +72,7 @@ const ARROW = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0.22, 0.451, 0.2),
 ]);
 const BLOCK = new THREE.BoxGeometry(1, 1, 1);
+const HOVER_OUTLINE = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01));
 
 /** Where the camera should look and from how far: the selected turtle, else the middle of the whole fleet. */
 function frameFor(turtles: Placed[], selected: Placed | undefined) {
@@ -98,7 +106,40 @@ function disposeChildren(group: THREE.Group) {
     }
 }
 
-const NO_BLOCKS: WorldBlock[] = [];
+const NO_BLOCKS: KnownBlock[] = [];
+
+/** Small stable offset per cell, in [-1, 1]. */
+function cellNoise(x: number, y: number, z: number): number {
+    const h = Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791);
+    return ((h >>> 0) % 1000) / 500 - 1;
+}
+
+/** One instanced mesh drawing every block in `blocks`, which it keeps in userData for picking. */
+function blockMesh(blocks: KnownBlock[], translucent: boolean): THREE.InstancedMesh {
+    const material = translucent
+        ? new THREE.MeshLambertMaterial({transparent: true, opacity: TRANSLUCENT_OPACITY, depthWrite: false})
+        : new THREE.MeshLambertMaterial();
+    const mesh = new THREE.InstancedMesh(BLOCK, material, blocks.length);
+    const matrix = new THREE.Matrix4();
+    const color = new THREE.Color();
+    blocks.forEach((b, i) => {
+        mesh.setMatrixAt(i, matrix.makeTranslation(b.x + 0.5, b.y + 0.5, b.z + 0.5));
+        const known = blockColor(b.name);
+        if (known == null) color.setHSL(blockHue(b.name) / 360, BLOCK_SATURATION, BLOCK_LIGHTNESS);
+        else color.setHex(known);
+        mesh.setColorAt(i, color.offsetHSL(0, 0, cellNoise(b.x, b.y, b.z) * BLOCK_JITTER));
+    });
+    mesh.userData.blocks = blocks;
+    mesh.computeBoundingSphere(); // so raycasts skip the mesh when the pointer is nowhere near it
+    return mesh;
+}
+
+/** The block a raycast hit, if it hit an instanced block mesh. */
+function hitBlock(hit: THREE.Intersection | undefined): KnownBlock | null {
+    if (hit?.instanceId == null) return null;
+    const blocks = hit.object.userData.blocks as KnownBlock[] | undefined;
+    return blocks?.[hit.instanceId] ?? null;
+}
 
 export function FleetMap3D({
                                turtles,
@@ -106,11 +147,20 @@ export function FleetMap3D({
                                following,
                                onCameraMoved,
                                onSelect,
-                               blocks = NO_BLOCKS
+                               blocks = NO_BLOCKS,
+                               blocksError = false,
                            }: Readonly<Props>) {
     const containerRef = useRef<HTMLDivElement>(null);
     const stageRef = useRef<Stage | null>(null);
     const selected = turtles.find((t) => t.turtleId === selectedId);
+    const [hovered, setHovered] = useState<KnownBlock | null>(null);
+
+    // A turtle's own cell can still hold what was seen there before it moved in, which would hide the turtle.
+    const occupied = turtles.map((t) => `${t.position.x},${t.position.y},${t.position.z}`).join(";");
+    const drawn = useMemo(() => {
+        const cells = new Set(occupied.split(";"));
+        return blocks.filter((b) => isDrawnBlock(b.name) && !cells.has(`${b.x},${b.y},${b.z}`));
+    }, [blocks, occupied]);
 
     // Listeners are attached once, so they read the current callbacks through a ref.
     const latest = useRef({onCameraMoved, onSelect});
@@ -151,7 +201,9 @@ export function FleetMap3D({
         const turtleGroup = new THREE.Group();
         const blockGroup = new THREE.Group();
         const floorGroup = new THREE.Group();
-        scene.add(floorGroup, blockGroup, turtleGroup);
+        const hoverOutline = new THREE.LineSegments(HOVER_OUTLINE, new THREE.LineBasicMaterial({color: SELECTED_COLOR}));
+        hoverOutline.visible = false;
+        scene.add(floorGroup, blockGroup, turtleGroup, hoverOutline);
 
         // OrbitControls applies wheel zoom in one jump per wheel event, and wheel events don't line up with frames,
         // so zooming stuttered while orbiting (which is damped) glided. The wheel handler below collects the zoom
@@ -248,6 +300,24 @@ export function FleetMap3D({
             if (hit) latest.current.onSelect(hit.object.userData.turtleId as number);
         };
 
+        // Hovering a block outlines and names it; a turtle in front of a block hides it.
+        let hoveredBlock: KnownBlock | null = null;
+        const hover = (block: KnownBlock | null) => {
+            if (block === hoveredBlock) return;
+            hoveredBlock = block;
+            hoverOutline.visible = block != null;
+            if (block) hoverOutline.position.set(block.x + 0.5, block.y + 0.5, block.z + 0.5);
+            setHovered(block);
+            invalidate();
+        };
+        const onPointerMove = (e: PointerEvent) => {
+            if (e.buttons !== 0) return hover(null); // orbiting or panning
+            const [hit] = rayAt(e.clientX, e.clientY)
+                .intersectObjects([...turtleGroup.children, ...blockGroup.children], true);
+            hover(hitBlock(hit));
+        };
+        const onPointerLeave = () => hover(null);
+
         const onWheel = (e: WheelEvent) => {
             e.preventDefault();
             // Captured on the container, so OrbitControls' own wheel zoom on the canvas never runs. Its pinch zoom
@@ -260,6 +330,8 @@ export function FleetMap3D({
         container.addEventListener("wheel", onWheel, {passive: false, capture: true});
         renderer.domElement.addEventListener("pointerdown", onPointerDown);
         renderer.domElement.addEventListener("pointerup", onPointerUp);
+        renderer.domElement.addEventListener("pointermove", onPointerMove);
+        renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
         stageRef.current = {renderer, labels, scene, camera, controls, turtleGroup, blockGroup, floorGroup, invalidate};
 
@@ -269,8 +341,11 @@ export function FleetMap3D({
             container.removeEventListener("wheel", onWheel, {capture: true});
             renderer.domElement.removeEventListener("pointerdown", onPointerDown);
             renderer.domElement.removeEventListener("pointerup", onPointerUp);
+            renderer.domElement.removeEventListener("pointermove", onPointerMove);
+            renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
             controls.dispose();
             for (const g of [turtleGroup, blockGroup, floorGroup]) disposeChildren(g);
+            hoverOutline.material.dispose();
             renderer.dispose();
             container.removeChild(renderer.domElement);
             container.removeChild(labels.domElement);
@@ -287,23 +362,18 @@ export function FleetMap3D({
         stage.invalidate();
     }, [turtles, selectedId]);
 
-    // World blocks share one instanced mesh, so thousands of them stay one draw call.
+    // World blocks share two instanced meshes, solid and see-through, so thousands of them stay two draw calls.
     useEffect(() => {
         const stage = stageRef.current;
         if (!stage) return;
         disposeChildren(stage.blockGroup);
-        if (blocks.length > 0) {
-            const mesh = new THREE.InstancedMesh(BLOCK, new THREE.MeshLambertMaterial(), blocks.length);
-            const matrix = new THREE.Matrix4();
-            const color = new THREE.Color();
-            blocks.forEach((b, i) => {
-                mesh.setMatrixAt(i, matrix.makeTranslation(b.x + 0.5, b.y + 0.5, b.z + 0.5));
-                mesh.setColorAt(i, color.setHSL(blockHue(b.name) / 360, 0.35, 0.4));
-            });
-            stage.blockGroup.add(mesh);
-        }
+        const solid = drawn.filter((b) => !isTranslucent(b.name));
+        const clear = drawn.filter((b) => isTranslucent(b.name));
+        if (solid.length > 0) stage.blockGroup.add(blockMesh(solid, false));
+        // Added last so it's drawn over the solid blocks behind it.
+        if (clear.length > 0) stage.blockGroup.add(blockMesh(clear, true));
         stage.invalidate();
-    }, [blocks]);
+    }, [drawn]);
 
     // Camera and floor grid follow the selected turtle, or the whole fleet when none is selected.
     const {target, distance, floorY} = frameFor(turtles, selected);
@@ -343,7 +413,30 @@ export function FleetMap3D({
     return (
         <div ref={containerRef} className="map-3d">
             <span className="visually-hidden">{`3D map of ${turtles.length} turtles`}</span>
+            <p className="map-3d-readout small">
+                {hovered ? <BlockReadout block={hovered} turtles={turtles}/> : blocksSummary(drawn.length, blocksError)}
+            </p>
         </div>
+    );
+}
+
+function blocksSummary(count: number, error: boolean): string {
+    if (error) return "Can't load the world map";
+    if (count === 0) return "No blocks seen here yet";
+    return count === 1 ? "1 block seen" : `${count.toLocaleString()} blocks seen`;
+}
+
+/** What the hovered block is, where it is, and which turtle saw it when. */
+function BlockReadout({block, turtles}: Readonly<{ block: KnownBlock; turtles: Placed[] }>) {
+    const {x, y, z, name, turtleId, ts} = block;
+    const seer = turtles.find((t) => t.turtleId === turtleId);
+    let seenBy = "";
+    // A turtle that's no longer on this map is named by its id, as turtleName does for an unlabelled one.
+    if (turtleId != null) seenBy = ` by ${turtleName(seer ?? {turtleId, label: null})}`;
+    return (
+        <>
+            <strong>{itemDisplayName(name)}</strong> ({x}, {y}, {z}) · seen{seenBy} {formatAgo(ts, Date.now() / 1000)}
+        </>
     );
 }
 

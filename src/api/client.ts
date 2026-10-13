@@ -4,6 +4,9 @@ import {
     type Command,
     type CommandRequest,
     type LabelRequest,
+    type MapBox,
+    type MapRegion,
+    MapRegionSchema,
     type PositionSeed,
     PositionSeedSchema,
     type RefuelCommand,
@@ -140,6 +143,14 @@ export function sendCommand(id: number, command: Command): Promise<TurtleCommand
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body),
     });
+}
+
+/** The blocks turtles have seen inside a box (at most MAX_MAP_QUERY_SPAN along each axis). Unseen cells are left out. */
+export function fetchMapBlocks({world, dimension, ...bounds}: MapBox): Promise<MapRegion> {
+    const params = new URLSearchParams(Object.entries(bounds).map(([k, v]) => [k, String(v)]));
+    if (world != null) params.set("world", world);
+    if (dimension != null) params.set("dimension", dimension);
+    return request(`/api/map/blocks?${params}`, MapRegionSchema);
 }
 
 /** ws(s):// URL for a server path, honouring VITE_API_URL when set. */

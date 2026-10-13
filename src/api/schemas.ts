@@ -194,6 +194,43 @@ export const CommandResultSchema = z.object({
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 
+/** protocol.api.AIR: the block name turtles report for an empty cell, so known air differs from unseen cells. */
+export const AIR = "minecraft:air";
+
+/** protocol.api.MAX_MAP_QUERY_SPAN: largest span, in blocks, a /api/map/blocks query may cover along each axis. */
+export const MAX_MAP_QUERY_SPAN = 256;
+
+/** protocol.api.KnownBlock: one cell of the world map, as a turtle last saw it. */
+export const KnownBlockSchema = z.object({
+    x: z.number().int(),
+    y: z.number().int(),
+    z: z.number().int(),
+    name: z.string(), // block id, e.g. "minecraft:stone", or AIR
+    turtleId: z.number().int().nullish().transform((id) => id ?? null), // the turtle that saw it
+    ts: z.number(), // unix seconds
+});
+export type KnownBlock = z.infer<typeof KnownBlockSchema>;
+
+/** protocol.api.MapRegion: the known blocks in the box a /api/map/blocks query asked for. Unseen cells are left out. */
+export const MapRegionSchema = z.object({
+    world: z.string().nullish().transform((w) => w ?? null),
+    dimension: z.string().nullish().transform((d) => d ?? null),
+    blocks: z.array(KnownBlockSchema),
+});
+export type MapRegion = z.infer<typeof MapRegionSchema>;
+
+/** Query of GET /api/map/blocks: an inclusive box, in the map for a world and dimension (each optional). */
+export interface MapBox {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+    world: string | null;
+    dimension: string | null;
+}
+
 /** protocol.api.TurtleStatus */
 export const TurtleStatusSchema = z.object({
     turtleId: z.number().int(),

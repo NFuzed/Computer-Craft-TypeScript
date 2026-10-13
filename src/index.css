@@ -371,6 +371,22 @@ h3 {
     opacity: 0.55;
 }
 
+/* Before the canvas in the DOM, so it's lifted above it; never catches the pointer. */
+.map-3d-readout {
+    position: absolute;
+    left: 0.6rem;
+    bottom: 0.5rem;
+    z-index: 1;
+    margin: 0;
+    color: var(--muted);
+    text-shadow: 0 0 3px var(--map-bg), 0 0 3px var(--map-bg);
+    pointer-events: none;
+}
+
+.map-3d-readout strong {
+    color: var(--text);
+}
+
 .map-3d-compass {
     font-size: 0.8rem;
     font-weight: 700;
