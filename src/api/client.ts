@@ -145,9 +145,13 @@ export function sendCommand(id: number, command: Command): Promise<TurtleCommand
     });
 }
 
-/** The blocks turtles have seen inside a box (at most MAX_MAP_QUERY_SPAN along each axis). Unseen cells are left out. */
+/**
+ * The blocks turtles have seen inside a box (at most MAX_MAP_QUERY_SPAN along each axis). Unseen cells are left out,
+ * and so is known air, which the dashboard doesn't draw (servers without excludeAir still send it).
+ */
 export function fetchMapBlocks({world, dimension, ...bounds}: MapBox): Promise<MapRegion> {
     const params = new URLSearchParams(Object.entries(bounds).map(([k, v]) => [k, String(v)]));
+    params.set("excludeAir", "true");
     if (world != null) params.set("world", world);
     if (dimension != null) params.set("dimension", dimension);
     return request(`/api/map/blocks?${params}`, MapRegionSchema);

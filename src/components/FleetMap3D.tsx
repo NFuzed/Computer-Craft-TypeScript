@@ -33,8 +33,27 @@ interface Stage {
     turtleGroup: THREE.Group;
     blockGroup: THREE.Group;
     floorGroup: THREE.Group;
+    /** Where each drawn block is, for hovering and for hiding the ones turtles stand in. */
+    blocks: BlockIndex;
     invalidate: () => void;
 }
+
+/** A drawn block, and which instance of which mesh draws it. */
+interface BlockSlot {
+    block: KnownBlock;
+    mesh: THREE.InstancedMesh;
+    index: number;
+}
+
+interface BlockIndex {
+    cells: Map<string, BlockSlot>; // by cellKey
+    bounds: THREE.Box3; // around every drawn block; empty when there are none
+    hidden: Set<string>; // cells a turtle is standing in, whose blocks are scaled to nothing
+}
+
+const emptyBlockIndex = (): BlockIndex => ({cells: new Map(), bounds: new THREE.Box3(), hidden: new Set()});
+
+const cellKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
 // Colours from the palette in index.css (WebGL can't read CSS variables or alpha in colour strings).
 const MAP_BG = 0x060b17; // --map-bg
@@ -114,8 +133,8 @@ function cellNoise(x: number, y: number, z: number): number {
     return ((h >>> 0) % 1000) / 500 - 1;
 }
 
-/** One instanced mesh drawing every block in `blocks`, which it keeps in userData for picking. */
-function blockMesh(blocks: KnownBlock[], translucent: boolean): THREE.InstancedMesh {
+/** One instanced mesh drawing every block in `blocks`, each recorded in `index`. */
+function blockMesh(blocks: KnownBlock[], translucent: boolean, index: BlockIndex): THREE.InstancedMesh {
     const material = translucent
         ? new THREE.MeshLambertMaterial({transparent: true, opacity: TRANSLUCENT_OPACITY, depthWrite: false})
         : new THREE.MeshLambertMaterial();
@@ -128,17 +147,65 @@ function blockMesh(blocks: KnownBlock[], translucent: boolean): THREE.InstancedM
         if (known == null) color.setHSL(blockHue(b.name) / 360, BLOCK_SATURATION, BLOCK_LIGHTNESS);
         else color.setHex(known);
         mesh.setColorAt(i, color.offsetHSL(0, 0, cellNoise(b.x, b.y, b.z) * BLOCK_JITTER));
+        index.cells.set(cellKey(b.x, b.y, b.z), {block: b, mesh, index: i});
+        index.bounds.expandByPoint(new THREE.Vector3(b.x, b.y, b.z));
+        index.bounds.expandByPoint(new THREE.Vector3(b.x + 1, b.y + 1, b.z + 1));
     });
-    mesh.userData.blocks = blocks;
-    mesh.computeBoundingSphere(); // so raycasts skip the mesh when the pointer is nowhere near it
     return mesh;
 }
 
-/** The block a raycast hit, if it hit an instanced block mesh. */
-function hitBlock(hit: THREE.Intersection | undefined): KnownBlock | null {
-    if (hit?.instanceId == null) return null;
-    const blocks = hit.object.userData.blocks as KnownBlock[] | undefined;
-    return blocks?.[hit.instanceId] ?? null;
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/** Hides or shows one instance without rebuilding its mesh. */
+function setSlotVisible(slot: BlockSlot, visible: boolean) {
+    const {x, y, z} = slot.block;
+    const matrix = visible ? new THREE.Matrix4().makeTranslation(x + 0.5, y + 0.5, z + 0.5) : HIDDEN_MATRIX;
+    slot.mesh.setMatrixAt(slot.index, matrix);
+    slot.mesh.instanceMatrix.needsUpdate = true;
+}
+
+/**
+ * The first visible block along `ray` and how far along the ray it is. Steps through the grid cell by cell
+ * (Amanatides & Woo) from where the ray enters the blocks' bounds, so the cost depends on the distance covered rather
+ * than on how many blocks there are, as it would when raycasting the instanced meshes.
+ */
+function pickBlock(ray: THREE.Ray, index: BlockIndex): { slot: BlockSlot; distance: number } | null {
+    if (index.cells.size === 0) return null;
+    const start = index.bounds.containsPoint(ray.origin)
+        ? ray.origin.clone()
+        : ray.intersectBox(index.bounds, new THREE.Vector3());
+    if (!start) return null;
+    const startDistance = start.distanceTo(ray.origin);
+    const d = ray.direction; // unit length, so distances below are in blocks
+    // Nudged along the ray, so a start on a cell boundary lands in the cell the ray enters.
+    const p = start.clone().addScaledVector(d, 1e-6);
+    const cell = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
+    const pos = [p.x, p.y, p.z];
+    const dir = [d.x, d.y, d.z];
+    const step = dir.map(Math.sign);
+    const tDelta = dir.map((v) => (v === 0 ? Infinity : Math.abs(1 / v)));
+    // Distance along the ray to the next cell boundary on each axis: the cell's far side when moving up the axis, its
+    // near side when moving down, and never when not moving along it.
+    const tMax = dir.map((v, a) => {
+        if (v === 0) return Infinity;
+        const boundary = v > 0 ? cell[a]! + 1 : cell[a]!;
+        return (boundary - pos[a]!) / v;
+    });
+
+    const size = index.bounds.getSize(new THREE.Vector3());
+    const maxSteps = Math.ceil(size.x + size.y + size.z) + 3; // enough to cross the bounds on any path
+    let t = 0;
+    for (let i = 0; i < maxSteps; i++) {
+        const key = cellKey(cell[0]!, cell[1]!, cell[2]!);
+        const slot = index.cells.get(key);
+        if (slot && !index.hidden.has(key)) return {slot, distance: startDistance + t};
+        let axis = tMax[0]! < tMax[1]! ? 0 : 1;
+        if (tMax[2]! < tMax[axis]!) axis = 2;
+        t = tMax[axis]!;
+        cell[axis]! += step[axis]!;
+        tMax[axis]! += tDelta[axis]!;
+    }
+    return null;
 }
 
 export function FleetMap3D({
@@ -155,12 +222,11 @@ export function FleetMap3D({
     const selected = turtles.find((t) => t.turtleId === selectedId);
     const [hovered, setHovered] = useState<KnownBlock | null>(null);
 
-    // A turtle's own cell can still hold what was seen there before it moved in, which would hide the turtle.
-    const occupied = turtles.map((t) => `${t.position.x},${t.position.y},${t.position.z}`).join(";");
-    const drawn = useMemo(() => {
-        const cells = new Set(occupied.split(";"));
-        return blocks.filter((b) => isDrawnBlock(b.name) && !cells.has(`${b.x},${b.y},${b.z}`));
-    }, [blocks, occupied]);
+    // The query keeps unchanged data identical, so a refetch that found nothing new doesn't rebuild the meshes.
+    const drawn = useMemo(() => blocks.filter((b) => isDrawnBlock(b.name)), [blocks]);
+    // A turtle's own cell can still hold what was seen there before it moved in, which would hide the turtle. Compared
+    // as a string, so a turtle update that doesn't move anyone changes nothing.
+    const occupied = turtles.map((t) => cellKey(t.position.x, t.position.y, t.position.z)).join(";");
 
     // Listeners are attached once, so they read the current callbacks through a ref.
     const latest = useRef({onCameraMoved, onSelect});
@@ -312,9 +378,11 @@ export function FleetMap3D({
         };
         const onPointerMove = (e: PointerEvent) => {
             if (e.buttons !== 0) return hover(null); // orbiting or panning
-            const [hit] = rayAt(e.clientX, e.clientY)
-                .intersectObjects([...turtleGroup.children, ...blockGroup.children], true);
-            hover(hitBlock(hit));
+            const caster = rayAt(e.clientX, e.clientY);
+            const picked = pickBlock(caster.ray, stageRef.current?.blocks ?? emptyBlockIndex());
+            const [turtleHit] = caster.intersectObjects(turtleGroup.children, true);
+            const behindTurtle = picked && turtleHit && turtleHit.distance < picked.distance;
+            hover(picked && !behindTurtle ? picked.slot.block : null);
         };
         const onPointerLeave = () => hover(null);
 
@@ -333,7 +401,11 @@ export function FleetMap3D({
         renderer.domElement.addEventListener("pointermove", onPointerMove);
         renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
-        stageRef.current = {renderer, labels, scene, camera, controls, turtleGroup, blockGroup, floorGroup, invalidate};
+        stageRef.current = {
+            renderer, labels, scene, camera, controls, turtleGroup, blockGroup, floorGroup,
+            blocks: emptyBlockIndex(),
+            invalidate,
+        };
 
         return () => {
             cancelAnimationFrame(frame);
@@ -367,13 +439,28 @@ export function FleetMap3D({
         const stage = stageRef.current;
         if (!stage) return;
         disposeChildren(stage.blockGroup);
+        const index = emptyBlockIndex();
         const solid = drawn.filter((b) => !isTranslucent(b.name));
         const clear = drawn.filter((b) => isTranslucent(b.name));
-        if (solid.length > 0) stage.blockGroup.add(blockMesh(solid, false));
+        if (solid.length > 0) stage.blockGroup.add(blockMesh(solid, false, index));
         // Added last so it's drawn over the solid blocks behind it.
-        if (clear.length > 0) stage.blockGroup.add(blockMesh(clear, true));
+        if (clear.length > 0) stage.blockGroup.add(blockMesh(clear, true, index));
+        stage.blocks = index;
         stage.invalidate();
     }, [drawn]);
+
+    // Blocks in cells turtles stand in are hidden in place, so a moving turtle doesn't rebuild the meshes. Runs after
+    // the effect above, so a rebuilt index gets its hidden cells again.
+    useEffect(() => {
+        const stage = stageRef.current;
+        if (!stage) return;
+        const {cells, hidden} = stage.blocks;
+        const wanted = new Set(occupied.split(";").filter((key) => cells.has(key)));
+        for (const key of hidden) if (!wanted.has(key)) setSlotVisible(cells.get(key)!, true);
+        for (const key of wanted) if (!hidden.has(key)) setSlotVisible(cells.get(key)!, false);
+        stage.blocks.hidden = wanted;
+        stage.invalidate();
+    }, [drawn, occupied]);
 
     // Camera and floor grid follow the selected turtle, or the whole fleet when none is selected.
     const {target, distance, floorY} = frameFor(turtles, selected);

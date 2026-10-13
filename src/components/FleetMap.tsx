@@ -1,6 +1,13 @@
 import {type JSX, lazy, type PointerEvent, Suspense, useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {TurtleStatus} from "../api/schemas";
-import {mapBoxFor, useWorldMap} from "../hooks/useWorldMap";
+import {
+    DEFAULT_VIEW_DISTANCE,
+    mapBoxFor,
+    useWorldMap,
+    VIEW_DISTANCES,
+    type ViewDistance,
+    viewSpan,
+} from "../hooks/useWorldMap";
 import {turtleColor, turtleName} from "../lib/format";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 
@@ -39,6 +46,7 @@ interface Drag {
 
 const UNKNOWN_DIMENSION = "unknown";
 const MODE_KEY = "fleet-map-mode";
+const VIEW_DISTANCE_KEY = "fleet-map-view-distance";
 const MIN_SPAN = 16; // blocks; keeps a lone turtle from filling the whole map
 const SELECTED_SPAN = 50; // blocks shown around the selected turtle
 const MIN_ZOOM_SPAN = 5;
@@ -127,6 +135,16 @@ function storedMode(): MapMode {
     }
 }
 
+/** The 3D view distance the user last picked. */
+function storedViewDistance(): ViewDistance {
+    try {
+        const stored = Number(localStorage.getItem(VIEW_DISTANCE_KEY));
+        return VIEW_DISTANCES.find((d) => d === stored) ?? DEFAULT_VIEW_DISTANCE;
+    } catch {
+        return DEFAULT_VIEW_DISTANCE;
+    }
+}
+
 /** The element's size in pixels, or null while it has no area. */
 function useElementSize(element: Element | null): Size | null {
     const [size, setSize] = useState<Size | null>(null);
@@ -170,7 +188,17 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const selected = visible.find((t) => t.turtleId === selectedId);
 
     // Only the 3D map draws blocks, so the world map is only fetched while it's open.
-    const worldMap = useWorldMap(mode === "3d" ? mapBoxFor(visible, selected) : null);
+    const [viewDistance, setViewDistance] = useState<ViewDistance>(storedViewDistance);
+    const worldMap = useWorldMap(mode === "3d" ? mapBoxFor(visible, selected, viewDistance) : null);
+
+    function chooseViewDistance(next: ViewDistance) {
+        setViewDistance(next);
+        try {
+            localStorage.setItem(VIEW_DISTANCE_KEY, String(next));
+        } catch {
+            // Not remembered; the map still changes.
+        }
+    }
 
     // The viewBox matches the element's shape, so the map needs the element's size in pixels.
     const [svg, setSvg] = useState<SVGSVGElement | null>(null);
@@ -293,6 +321,20 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                         {dimensions.map((d) => (
                             <option key={d} value={d}>
                                 {d}
+                            </option>
+                        ))}
+                    </select>
+                )}
+                {mode === "3d" && visible.length > 0 && (
+                    <select
+                        value={viewDistance}
+                        onChange={(e) => chooseViewDistance(Number(e.target.value) as ViewDistance)}
+                        aria-label="View distance"
+                        title="How far around the selected turtle (or the middle of the fleet) blocks are loaded"
+                    >
+                        {VIEW_DISTANCES.map((d) => (
+                            <option key={d} value={d}>
+                                {d === 1 ? "1 chunk" : `${d} chunks`} ({viewSpan(d)} blocks)
                             </option>
                         ))}
                     </select>
