@@ -156,6 +156,23 @@ function useElementSize(element: Element | null): Size | null {
     return size;
 }
 
+type Keyed<T> = { key: string; value: T };
+
+/**
+ * State that belongs to what was being followed when it was set: it reads as null under any other key, and is dropped
+ * once the key changes, so coming back to that key later starts afresh. Setting it for the new key just before the key
+ * changes (a pick on the map) keeps it.
+ */
+function useKeyedState<T>(key: string) {
+    const [state, setState] = useState<Keyed<T> | null>(null);
+    const [lastKey, setLastKey] = useState(key);
+    if (lastKey !== key) {
+        setLastKey(key);
+        if (state && state.key !== key) setState(null);
+    }
+    return [state?.key === key ? state.value : null, setState] as const;
+}
+
 export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     const placed = turtles.filter((t): t is Placed => t.position != null);
     const dimensions = dimensionsByCount(placed);
@@ -214,13 +231,12 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     // turtle or change dimension. The key ties the manual frame to what was being followed when it was made.
     const followKeyFor = (turtleId: number | undefined) => `${dimension}:${turtleId ?? "all"}`;
     const followKey = followKeyFor(selected?.turtleId);
-    const [panned, setPanned] = useState<{ key: string; frame: Frame } | null>(null);
-    const manualFrame = panned?.key === followKey ? panned.frame : null;
+    const [manualFrame, setPanned] = useKeyedState<Frame>(followKey);
     const frame = autoFrame && (manualFrame ?? autoFrame);
 
     // The 3D camera follows the same way: until the user moves it, for whatever was being followed at the time.
-    const [moved3d, setMoved3d] = useState<string | null>(null);
-    const following3d = moved3d !== followKey;
+    const [moved3d, setMoved3d] = useKeyedState<true>(followKey);
+    const following3d = !moved3d;
 
     const [dragging, setDragging] = useState(false);
     const drag = useRef<Drag | null>(null);
@@ -246,11 +262,11 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
             const factor = Math.exp(wheelPixels(e) * WHEEL_ZOOM_SPEED);
             // Functional update: several wheel events can arrive before the next render.
             setPanned((prev) => {
-                const base = prev?.key === followKey ? prev.frame : autoFrame;
+                const base = prev?.key === followKey ? prev.value : autoFrame;
                 const span = clamp(base.span * factor, MIN_ZOOM_SPAN, MAX_ZOOM_SPAN);
                 // Keep the block under the cursor where it is.
                 const shift = (base.span - span) / short;
-                return {key: followKey, frame: {cx: base.cx + ox * shift, cz: base.cz + oy * shift, span}};
+                return {key: followKey, value: {cx: base.cx + ox * shift, cz: base.cz + oy * shift, span}};
             });
         };
         svg.addEventListener("wheel", onWheel, {passive: false});
@@ -262,12 +278,12 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
     // Selecting from the list centres the map on the turtle, but selecting on the map keeps the map where it is:
     // the turtle is already in view, and jumping would move it out from under the cursor.
     function selectOnMap(turtleId: number) {
-        if (frame) setPanned({key: followKeyFor(turtleId), frame});
+        if (frame) setPanned({key: followKeyFor(turtleId), value: frame});
         onSelect(turtleId);
     }
 
     function selectOn3d(turtleId: number) {
-        setMoved3d(followKeyFor(turtleId));
+        setMoved3d({key: followKeyFor(turtleId), value: true});
         onSelect(turtleId);
     }
 
@@ -293,7 +309,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
         const blocksPerPixel = d.origin.span / Math.min(rect.width, rect.height);
         setPanned({
             key: followKey,
-            frame: {cx: d.origin.cx - dx * blocksPerPixel, cz: d.origin.cz - dy * blocksPerPixel, span: d.origin.span},
+            value: {cx: d.origin.cx - dx * blocksPerPixel, cz: d.origin.cz - dy * blocksPerPixel, span: d.origin.span},
         });
     }
 
@@ -376,7 +392,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                         turtles={visible}
                         selectedId={selectedId}
                         following={following3d}
-                        onCameraMoved={() => setMoved3d(followKey)}
+                        onCameraMoved={() => setMoved3d({key: followKey, value: true})}
                         onSelect={selectOn3d}
                         blocks={worldMap.data?.blocks}
                         blocksError={worldMap.isError}
