@@ -136,9 +136,6 @@ export const Capabilities = {
     SPEAKER: "speaker",
 } as const;
 
-/** What every turtle can do without upgrades, so the server leaves these out of `capabilities`. */
-export const BASE_CAPABILITIES = ["move", "place", "drop", "suck", "refuel"] as const;
-
 /** protocol.api.EquippedUpgrade: what a turtle has equipped on one side. */
 export const EquippedUpgradeSchema = z.object({
     item: z.string().nullish().transform((i) => i ?? null), // e.g. "minecraft:diamond_pickaxe"; null if unknown
@@ -149,15 +146,26 @@ export type EquippedUpgrade = z.infer<typeof EquippedUpgradeSchema>;
 /**
  * protocol.api.TurtleEquipment: the upgrades a turtle last reported and the capabilities the server worked out from
  * them. A null side has nothing equipped, but when `itemsKnown` is false (older CC: Tweaked) it may still hold a tool.
+ * `seeded` is true when the dashboard set it instead (see EquipmentSeedRequest).
  */
 export const TurtleEquipmentSchema = z.object({
     left: EquippedUpgradeSchema.nullish().transform((u) => u ?? null),
     right: EquippedUpgradeSchema.nullish().transform((u) => u ?? null),
     itemsKnown: z.boolean(),
     capabilities: z.array(z.string()),
+    seeded: z.boolean().nullish().transform((s) => s ?? false), // false on servers that can't seed equipment
     ts: z.number(), // unix seconds
 });
 export type TurtleEquipment = z.infer<typeof TurtleEquipmentSchema>;
+
+/**
+ * protocol.api.EquipmentSeedRequest: body of PUT /api/turtles/{id}/equipment, saying what a turtle has equipped when it
+ * can't read that itself. A null side is empty. It stays until the turtle reports equipment with item names.
+ */
+export interface EquipmentSeedRequest {
+    left: EquippedUpgrade | null;
+    right: EquippedUpgrade | null;
+}
 
 /**
  * protocol.api.Commands: what POST /api/turtles/{id}/commands can make a turtle do, one turtle API call each. Moves and

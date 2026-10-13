@@ -3,6 +3,7 @@ import {
     ApiErrorSchema,
     type Command,
     type CommandRequest,
+    type EquipmentSeedRequest,
     type LabelRequest,
     type MapBox,
     type MapRegion,
@@ -93,6 +94,18 @@ export function renameTurtle(id: number, label: string | null): Promise<TurtleSt
         method: "PUT",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body),
+    });
+}
+
+/**
+ * Says what a turtle has equipped, for turtles whose CC: Tweaked can't see their tools. Stored right away and kept until
+ * the turtle reports equipment with item names; 404 if the server doesn't know the turtle.
+ */
+export function seedEquipment(id: number, equipment: EquipmentSeedRequest): Promise<TurtleStatus> {
+    return request(`/api/turtles/${id}/equipment`, TurtleStatusSchema, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(equipment),
     });
 }
 
