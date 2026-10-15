@@ -108,6 +108,10 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 | `GET`    | `/api/stations`                        | `Station[]`. Optional query `type`                                                                                      |
 | `POST`   | `/api/stations`                        | `201` + `Station`. Body: `StationRequest`. `400` if invalid, `409` if it overlaps another station                       |
 | `DELETE` | `/api/stations/{id}`                   | `204`. `404` if unknown                                                                                                 |
+| `GET`    | `/api/zones`                           | `Zone[]`. Optional query `type` (`nodig` or `quarry`)                                                                   |
+| `POST`   | `/api/zones`                           | `201` + `Zone`. Body: `ZoneRequest`. `400` if invalid                                                                   |
+| `PUT`    | `/api/zones/{id}`                      | `Zone`, keeping its id. Body: `ZoneRequest`. `400` if invalid, `404` if unknown                                         |
+| `DELETE` | `/api/zones/{id}`                      | `204`. `404` if unknown                                                                                                 |
 | `GET`    | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, ≤256 apart per axis), optional `world`, `dimension`, `excludeAir`          |
 
 ```ts
@@ -209,6 +213,20 @@ type StationRequest = {
 };
 type Station = StationRequest & { stationId: number; ts: number };
 
+// Trips never dig in a no-dig zone in their world and dimension; the server reads zones every time it plans.
+// Quarries are only stored for now.
+type ZoneRequest = {
+    name: string;                   // 1..32 printable ASCII, like station names
+    type: "nodig" | "quarry";
+    minX: number; maxX: number;     // inclusive, min <= max
+    minZ: number; maxZ: number;
+    minY: number | null;            // null: no lower limit
+    maxY: number | null;            // null: no upper limit
+    world: string | null;
+    dimension: string | null;
+};
+type Zone = ZoneRequest & { zoneId: number; ts: number };
+
 // POST /goto plans a path straight away and refuses an impossible one. When the turtle runs into something the server
 // plans again from where it stopped. The dashboard polls GET /goto (and the turtle) every 1s while a trip is moving,
 // and holds back single commands until it ends.
@@ -270,12 +288,15 @@ src/
 │   ├── useInventory.ts  # polls a turtle's inventory, selects slots
 │   ├── useWorldMap.ts   # polls the world map around the turtles for the 3D map
 │   ├── useStations.ts   # the fleet's stations; add and remove them
+│   ├── useZones.ts      # the fleet's no-dig zones and quarries; add, edit and remove them
 │   ├── useTrip.ts       # a turtle's goto trip: start, poll while moving, stop
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── WorldList.tsx    # the worlds turtles are in; choosing one limits the list and map to it
 │   ├── TurtleList.tsx   # turtles in the chosen world by dimension: online/offline, label, last seen
 │   ├── StationsPanel.tsx # collapsible list of the chosen world's stations by dimension, with Add and remove
+│   ├── ZonesPanel.tsx   # collapsible list of the chosen world's zones by dimension, with edit and remove
+│   ├── ZoneForm.tsx     # a zone's name, type, X/Z bounds and optional Y limits (PUT /api/zones/{id})
 │   ├── StationForm.tsx  # name, type, standing cell (or the selected turtle's), chest side, heading, world
 │   ├── TurtleDetail.tsx # status, label, position, equipment, commands
 │   ├── LabelPositionSection.tsx # label + reported position, with an Edit button that opens LabelPositionForm
@@ -288,7 +309,8 @@ src/
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form
-│   ├── FleetMap.tsx     # top-down X/Z map of turtles and stations, camera lock, and the switch to the 3D map
+│   ├── FleetMap.tsx     # top-down X/Z map of turtles, stations and zones, camera lock, right-drag to mark an area
+│   ├── AreaMenu.tsx     # the menu for a right-dragged area: set a no-dig zone or a quarry
 │   ├── TurtleMenu.tsx   # the map's right-click menu for a turtle: go to the nearest station, lock the camera
 │   ├── ContextMenu.tsx  # generic right-click menu: items, separators, keyboard, async items that show errors
 │   └── FleetMap3D.tsx   # three.js map of the turtles, stations and the blocks they've seen
@@ -296,6 +318,7 @@ src/
 │   ├── fleet.ts         # a turtle's world and dimension, grouping turtles by them
 │   ├── format.ts        # colours, names, "x ago" timestamps
 │   ├── stations.ts      # station names, colours, chest cells, nearest of a type, filtering and grouping
+│   ├── zones.ts         # zone labels, areas, Y range text, filtering, grouping, and requests from a map area
 │   └── world.ts         # block colours and which blocks the 3D map draws
 ├── App.tsx
 └── main.tsx
@@ -321,5 +344,7 @@ src/
 - [x] Add and view stations (fuel, drop-off, pickup), and show them on both maps
 - [x] Send a turtle to a location or a station
 - [x] Right-click a turtle on the map: go to the nearest refuel / drop-off / pickup, lock the camera on it
+- [x] Mark no-dig zones and quarries on the map and edit them in a Zones panel; trips never dig in no-dig zones
+- [ ] Quarries: turtles mine the area (server)
 - [ ] Higher-level commands (mine an area, return home)
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)

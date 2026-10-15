@@ -9,7 +9,7 @@ import {
     useRef,
     useState
 } from "react";
-import type {Station, TurtleStatus} from "../api/schemas";
+import type {Station, TurtleStatus, Zone} from "../api/schemas";
 import {
     DEFAULT_VIEW_DISTANCE,
     mapBoxFor,
@@ -22,12 +22,18 @@ import {groupBy, turtleDimension, UNKNOWN_DIMENSION} from "../lib/fleet";
 import {turtleColor, turtleName} from "../lib/format";
 import {chestCell, stationDimension, stationTitle} from "../lib/stations";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
+import {type Area, areaBetween, areaSizeText, zoneDimension, zoneTitle} from "../lib/zones";
+import {AreaMenu} from "./AreaMenu";
 import {TurtleMenu} from "./TurtleMenu";
 
 interface Props {
     turtles: TurtleStatus[];
     /** The stations in the shown world; the map draws those in the shown dimension. */
     stations: Station[];
+    /** The zones in the shown world; the map draws those in the shown dimension. */
+    zones: Zone[];
+    /** The world the dashboard is showing, which zones marked on the map are made in. */
+    world: string | null;
     selectedId: number | null;
     onSelect: (id: number) => void;
 }
@@ -57,6 +63,22 @@ interface Drag {
     startY: number;
     origin: Frame;
     moved: boolean;
+}
+
+/** A right-drag marking out an area, from the block it started on. */
+interface Marking {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    from: { x: number; z: number };
+    moved: boolean;
+}
+
+/** The menu for a marked area, and where it opens in client px. */
+interface OpenAreaMenu {
+    area: Area;
+    x: number;
+    y: number;
 }
 
 /** The turtle the camera is locked onto, and the zoom it keeps while following it. */
@@ -200,7 +222,7 @@ function useKeyedState<T>(key: string) {
     return [state?.key === key ? state.value : null, setState] as const;
 }
 
-export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Props>) {
+export function FleetMap({turtles, stations, zones, world, selectedId, onSelect}: Readonly<Props>) {
     const placed = turtles.filter((t): t is Placed => t.position != null);
     const dimensions = dimensionsByCount(placed);
 
@@ -235,6 +257,7 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
     const visible = placed.filter((t) => turtleDimension(t) === dimension);
     const selected = visible.find((t) => t.turtleId === selectedId);
     const visibleStations = stations.filter((s) => stationDimension(s) === dimension);
+    const visibleZones = zones.filter((z) => zoneDimension(z) === dimension);
 
     // Only the 3D map draws blocks, so the world map is only fetched while it's open.
     const [viewDistance, setViewDistance] = useState<ViewDistance>(storedViewDistance);
@@ -339,17 +362,69 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
     const [menu, setMenu] = useState<OpenMenu | null>(null);
     const menuTurtle = menu && visible.find((t) => t.turtleId === menu.turtleId);
 
+    // Holding right-click and dragging marks out an area; letting go opens its menu. The area stays drawn until the menu
+    // closes.
+    const marking = useRef<Marking | null>(null);
+    const [markedArea, setMarkedArea] = useState<Area | null>(null);
+    const [areaMenu, setAreaMenu] = useState<OpenAreaMenu | null>(null);
+    // The browser's contextmenu event comes after a right-drag ends, and mustn't open a turtle's menu as well
+    const skipTurtleMenu = useRef(false);
+
     function openMenu(turtleId: number, e: MouseEvent) {
         e.preventDefault();
+        if (skipTurtleMenu.current) {
+            skipTurtleMenu.current = false;
+            return;
+        }
         setMenu({turtleId, x: e.clientX, y: e.clientY});
     }
 
+    /** The block under a point on the screen. */
+    function blockAt(clientX: number, clientY: number): { x: number; z: number } | null {
+        if (!svg || !view) return null;
+        const rect = svg.getBoundingClientRect();
+        return {
+            x: Math.floor(view.minX + (clientX - rect.left) * view.blocksPerPixel),
+            z: Math.floor(view.minZ + (clientY - rect.top) * view.blocksPerPixel),
+        };
+    }
+
+    function closeAreaMenu() {
+        setAreaMenu(null);
+        setMarkedArea(null);
+    }
+
     function onPointerDown(e: PointerEvent<SVGSVGElement>) {
+        if (e.button === 2) {
+            const from = blockAt(e.clientX, e.clientY);
+            skipTurtleMenu.current = false;
+            if (from) marking.current = {
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                from,
+                moved: false
+            };
+            return;
+        }
         if (e.button !== 0 || !frame) return;
         drag.current = {pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origin: frame, moved: false};
     }
 
     function onPointerMove(e: PointerEvent<SVGSVGElement>) {
+        const m = marking.current;
+        if (m?.pointerId === e.pointerId && svg) {
+            if (!m.moved) {
+                if (Math.hypot(e.clientX - m.startX, e.clientY - m.startY) < DRAG_THRESHOLD) return;
+                m.moved = true;
+                svg.setPointerCapture(e.pointerId);
+                setMenu(null);
+                setAreaMenu(null);
+            }
+            const to = blockAt(e.clientX, e.clientY);
+            if (to) setMarkedArea(areaBetween(m.from, to));
+            return;
+        }
         const d = drag.current;
         if (d?.pointerId !== e.pointerId || !svg) return;
         const dx = e.clientX - d.startX;
@@ -373,6 +448,20 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
     }
 
     function onPointerEnd(e: PointerEvent<SVGSVGElement>) {
+        const m = marking.current;
+        if (m?.pointerId === e.pointerId) {
+            marking.current = null;
+            const to = blockAt(e.clientX, e.clientY);
+            if (m.moved && to && e.type === "pointerup") {
+                const area = areaBetween(m.from, to);
+                setMarkedArea(area);
+                setAreaMenu({area, x: e.clientX, y: e.clientY});
+                skipTurtleMenu.current = true;
+            } else if (m.moved) {
+                setMarkedArea(null);
+            }
+            return;
+        }
         if (drag.current?.pointerId !== e.pointerId) return;
         drag.current = null;
         setDragging(false);
@@ -431,7 +520,7 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                 {mode === "top" && view && (
                     <span className="muted small">
                         grid: {view.gridStep === 1 ? "1 block" : `${view.gridStep} blocks`} · north ↑ · drag to pan,
-                        scroll to zoom
+                        right-drag to mark an area, scroll to zoom
                     </span>
                 )}
                 {mode === "top" && view && anchored && (
@@ -489,6 +578,9 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                                 labelStep={view.labelStep}
                                 unit={view.blocksPerPixel * UNIT_PX}
                             />
+                            {visibleZones.map((z) => (
+                                <ZoneShape key={z.zoneId} zone={z} blocksPerPixel={view.blocksPerPixel}/>
+                            ))}
                             {visibleStations.map((s) => (
                                 <StationMarker key={s.stationId} station={s} blocksPerPixel={view.blocksPerPixel}/>
                             ))}
@@ -502,6 +594,7 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                                     onMenu={openMenu}
                                 />
                             ))}
+                            {markedArea && <MarkedArea area={markedArea} blocksPerPixel={view.blocksPerPixel}/>}
                         </>
                     )}
                 </svg>
@@ -516,6 +609,16 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                     onLock={() => lockOn(menuTurtle.turtleId)}
                     onUnlock={unlock}
                     onClose={() => setMenu(null)}
+                />
+            )}
+            {mode === "top" && areaMenu && (
+                <AreaMenu
+                    area={areaMenu.area}
+                    world={world}
+                    dimension={dimension}
+                    x={areaMenu.x}
+                    y={areaMenu.y}
+                    onClose={closeAreaMenu}
                 />
             )}
         </section>
@@ -562,6 +665,37 @@ function GridLines({minX, minZ, width, height, step, labelStep, unit}: Readonly<
         );
     }
     return <g>{lines}</g>;
+}
+
+/** A zone's blocks, shaded in its type's colour with its name in the top-left corner. Drawn under stations and turtles. */
+function ZoneShape({zone, blocksPerPixel}: Readonly<{ zone: Zone; blocksPerPixel: number }>) {
+    const {minX, maxX, minZ, maxZ} = zone;
+    const unit = blocksPerPixel * UNIT_PX;
+    return (
+        <g className={`zone ${zone.type}`}>
+            <title>{zoneTitle(zone)}</title>
+            <rect x={minX} y={minZ} width={maxX - minX + 1} height={maxZ - minZ + 1} className="zone-area"
+                  strokeWidth={unit * 0.15}/>
+            <text x={minX + unit * 0.4} y={minZ + unit * 1.4} className="zone-label" fontSize={unit * 1.1}>
+                {zone.name}
+            </text>
+        </g>
+    );
+}
+
+/** The area being right-dragged, or whose menu is open: a dashed outline with its size. */
+function MarkedArea({area, blocksPerPixel}: Readonly<{ area: Area; blocksPerPixel: number }>) {
+    const {minX, maxX, minZ, maxZ} = area;
+    const unit = blocksPerPixel * UNIT_PX;
+    return (
+        <g className="marked-area" aria-hidden="true">
+            <rect x={minX} y={minZ} width={maxX - minX + 1} height={maxZ - minZ + 1} strokeWidth={unit * 0.2}
+                  strokeDasharray={`${unit * 0.6} ${unit * 0.4}`}/>
+            <text x={maxX + 1} y={maxZ + 1 + unit * 1.5} textAnchor="end" fontSize={unit * 1.2}>
+                {areaSizeText(area)}
+            </text>
+        </g>
+    );
 }
 
 /**
