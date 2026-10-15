@@ -30,6 +30,10 @@ import {
     type TurtleStatus,
     TurtleStatusListSchema,
     TurtleStatusSchema,
+    type Zone,
+    ZoneListSchema,
+    type ZoneRequest,
+    ZoneSchema,
 } from "./schemas";
 
 /** Empty in development (Vite proxies /api and /ws); the Kotlin server's origin in production. */
@@ -195,10 +199,42 @@ export function createStation(station: StationRequest): Promise<Station> {
 }
 
 /** Deletes a station (204); 404 if there's no such station. */
-export async function deleteStation(id: number): Promise<void> {
-    // 204 has no body to parse
-    const res = await fetch(`${API_BASE_URL}/api/stations/${id}`, {method: "DELETE", headers: extraHeaders});
+export function deleteStation(id: number): Promise<void> {
+    return deleteResource(`/api/stations/${id}`);
+}
+
+/** DELETEs something the server answers with 204, which has no body to parse. */
+async function deleteResource(path: string): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}${path}`, {method: "DELETE", headers: extraHeaders});
     await throwIfFailed(res);
+}
+
+/** Every zone the fleet shares: no-dig zones and quarries. */
+export function fetchZones(): Promise<Zone[]> {
+    return request("/api/zones", ZoneListSchema);
+}
+
+/** Creates a zone (201); 400 if the request is wrong. */
+export function createZone(zone: ZoneRequest): Promise<Zone> {
+    return request("/api/zones", ZoneSchema, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(zone),
+    });
+}
+
+/** Replaces a zone, keeping its id (200); 400 if the request is wrong, 404 if there's no such zone. */
+export function updateZone(id: number, zone: ZoneRequest): Promise<Zone> {
+    return request(`/api/zones/${id}`, ZoneSchema, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(zone),
+    });
+}
+
+/** Deletes a zone (204); 404 if there's no such zone. */
+export function deleteZone(id: number): Promise<void> {
+    return deleteResource(`/api/zones/${id}`);
 }
 
 /**

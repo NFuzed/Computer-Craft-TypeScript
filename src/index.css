@@ -1271,3 +1271,80 @@ output.refuel-ok {
     font-weight: 500;
     font-size: 0.7rem;
 }
+
+/* Zones: no-dig in red, quarries in violet. The panel's badges and the map's shading share the colours */
+.zone-badge.nodig,
+.zone.nodig {
+    --zone: #f07d7c;
+}
+
+.zone-badge.quarry,
+.zone.quarry {
+    --zone: #b49af2;
+}
+
+.station-badge.zone-badge {
+    background: color-mix(in srgb, var(--zone, var(--accent)) 14%, transparent);
+    color: var(--zone, var(--accent));
+}
+
+.zone-area {
+    fill: color-mix(in srgb, var(--zone, var(--muted)) 14%, transparent);
+    stroke: var(--zone, var(--muted));
+    stroke-opacity: 0.8;
+}
+
+.zone-label {
+    fill: var(--zone, var(--muted));
+    font-weight: 600;
+}
+
+/* The area being right-dragged on the map */
+.marked-area rect {
+    fill: rgba(232, 243, 255, 0.08);
+    stroke: var(--text);
+}
+
+.marked-area text {
+    fill: var(--text);
+    font-weight: 600;
+    paint-order: stroke;
+    stroke: var(--map-bg);
+    stroke-width: 0.3em;
+}
+
+.zone-item > .zone-form {
+    margin: 0.2rem 0 0.6rem;
+}
+
+.zone-bounds {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.zone-axis {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+/* Floated so it sits beside the boxes; the grid next to it starts its own block, so it fills the rest of the row */
+.zone-axis-name {
+    float: left;
+    width: 1.2rem;
+    padding: 0;
+    margin-right: 0.4rem;
+    line-height: 2rem;
+    font-weight: 600;
+}
+
+.zone-axis-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+}
+
+.zone-axis input {
+    width: 100%;
+}

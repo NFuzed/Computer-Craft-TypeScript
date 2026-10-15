@@ -2,14 +2,17 @@ import {useState} from "react";
 import {FleetMap} from "./components/FleetMap";
 import {InventoryPanel} from "./components/InventoryPanel";
 import {StationsPanel} from "./components/StationsPanel";
+import {ZonesPanel} from "./components/ZonesPanel";
 import {TurtleDetail} from "./components/TurtleDetail";
 import {TurtleList} from "./components/TurtleList";
 import {WorldList} from "./components/WorldList";
 import {useDashboardSocket} from "./hooks/useDashboardSocket";
 import {useStations} from "./hooks/useStations";
 import {useTurtles} from "./hooks/useTurtles";
+import {useZones} from "./hooks/useZones";
 import {groupBy, turtleWorld} from "./lib/fleet";
 import {stationsIn} from "./lib/stations";
+import {zonesIn} from "./lib/zones";
 
 const WORLD_KEY = "fleet-world";
 
@@ -48,6 +51,8 @@ export function App() {
 
     const {data: stations = []} = useStations();
     const shownStations = stationsIn(stations, world);
+    const {data: zones = []} = useZones();
+    const shownZones = zonesIn(zones, world);
 
     function chooseWorld(next: string) {
         setChosenWorld(next);
@@ -90,10 +95,11 @@ export function App() {
                             <WorldList worlds={worlds} selected={world} onSelect={chooseWorld}/>
                             <TurtleList turtles={shown} selectedId={selectedId} onSelect={setSelectedId}/>
                             <StationsPanel world={world} turtle={selected}/>
+                            <ZonesPanel world={world}/>
                             <InventoryPanel turtle={selected}/>
                         </div>
-                        <FleetMap turtles={shown} stations={shownStations} selectedId={selectedId}
-                                  onSelect={setSelectedId}/>
+                        <FleetMap turtles={shown} stations={shownStations} zones={shownZones} world={world}
+                                  selectedId={selectedId} onSelect={setSelectedId}/>
                         <TurtleDetail turtle={selected} onClose={() => setSelectedId(null)}/>
                     </>
                 )}

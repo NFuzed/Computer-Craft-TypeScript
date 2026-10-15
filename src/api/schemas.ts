@@ -384,3 +384,48 @@ export const TripSchema = z.object({
     updated: z.number(),
 });
 export type Trip = z.infer<typeof TripSchema>;
+
+// --- Zones ---
+
+/** protocol.api.ZoneTypes: no-dig zones are never dug by planned routes; quarries are for the server to mine later. */
+export const ZONE_TYPES = ["nodig", "quarry"] as const;
+export type ZoneType = (typeof ZONE_TYPES)[number];
+
+/** protocol.api.MAX_ZONE_NAME_LENGTH: same limit as station names. */
+export const MAX_ZONE_NAME_LENGTH = 32;
+
+/**
+ * protocol.api.Zone: a box of blocks with a purpose, shared by the whole fleet. X and Z are always bounded and
+ * inclusive; a null minY or maxY leaves the box open downwards or upwards.
+ */
+export const ZoneSchema = z.object({
+    zoneId: z.number().int(),
+    name: z.string(),
+    type: z.string(), // one of ZONE_TYPES
+    minX: z.number().int(),
+    maxX: z.number().int(),
+    minZ: z.number().int(),
+    maxZ: z.number().int(),
+    minY: z.number().int().nullish().transform((y) => y ?? null),
+    maxY: z.number().int().nullish().transform((y) => y ?? null),
+    world: z.string().nullish().transform((w) => w ?? null),
+    dimension: z.string().nullish().transform((d) => d ?? null),
+    ts: z.number(), // created or last replaced, unix seconds
+});
+export type Zone = z.infer<typeof ZoneSchema>;
+
+export const ZoneListSchema = z.array(ZoneSchema);
+
+/** protocol.api.ZoneRequest: body of POST /api/zones and PUT /api/zones/{id}. */
+export interface ZoneRequest {
+    name: string;
+    type: ZoneType;
+    minX: number;
+    maxX: number;
+    minZ: number;
+    maxZ: number;
+    minY: number | null;
+    maxY: number | null;
+    world: string | null;
+    dimension: string | null;
+}
