@@ -1,6 +1,8 @@
 import {type ReactNode, useState} from "react";
 import {Capabilities, type Command, type CommandResult, type TurtleStatus} from "../api/schemas";
+import {useTrip} from "../hooks/useTrip";
 import {useTurtleCommand} from "../hooks/useTurtles";
+import {GotoForm} from "./GotoForm";
 
 interface Props {
     turtle: TurtleStatus;
@@ -121,14 +123,18 @@ function allows(turtle: TurtleStatus, capability: string | undefined): boolean {
 /** Buttons that send one command at a time to the turtle, with the outcome of the last one. Mount with `key={turtleId}`. */
 export function CommandPad({turtle}: Readonly<Props>) {
     const {send, pendingCommand, result, timedOut, error} = useTurtleCommand(turtle);
+    const trip = useTrip(turtle.turtleId);
     // The action whose aim buttons are showing, if one is picked
     const [selected, setSelected] = useState<string | null>(null);
     const action = ACTIONS.find((a) => a.name === selected);
     const actionEnabled = action != null && allows(turtle, action.needs);
-    // A command sent while the previous one runs is lost on the turtle, so only one is sent at a time
-    const busy = !turtle.online || pendingCommand != null;
+    // A command sent while the previous one runs is lost on the turtle, so only one is sent at a time. A trip runs a
+    // whole path of commands, so nothing else is sent until it ends.
+    const busy = !turtle.online || pendingCommand != null || trip.moving;
     // nav refuses to move an unseeded turtle; a seeded one has reported a position
     const canMove = turtle.position != null;
+
+    const busyTitle = trip.moving ? "The turtle is on its way somewhere; stop it below first" : undefined;
 
     function button(command: Command, text: string, enabled = true, why?: string) {
         const label = commandLabel(command);
@@ -139,7 +145,7 @@ export function CommandPad({turtle}: Readonly<Props>) {
                 className={command === pendingCommand ? "mc-button command pending" : "mc-button command"}
                 disabled={busy || !enabled}
                 aria-label={label}
-                title={enabled ? label : why}
+                title={busyTitle ?? (enabled ? label : why)}
                 onClick={() => send(command)}
             >
                 {text}
@@ -208,6 +214,9 @@ export function CommandPad({turtle}: Readonly<Props>) {
                 <p className="seed-pending small">Waiting for the turtle to {commandLabel(pendingCommand)}…</p>
             )}
             {pendingCommand == null && <CommandOutcome result={result} timedOut={timedOut} error={error}/>}
+
+            <h4 className="group-heading goto-heading">Go to</h4>
+            <GotoForm turtle={turtle} trip={trip}/>
         </div>
     );
 }

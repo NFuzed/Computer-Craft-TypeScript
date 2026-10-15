@@ -4,6 +4,7 @@ import {
     type Command,
     type CommandRequest,
     type EquipmentSeedRequest,
+    type GotoRequest,
     type LabelRequest,
     type MapBox,
     type MapRegion,
@@ -16,6 +17,12 @@ import {
     type SeedRequest,
     type SelectSlotRequest,
     SelectSlotRequestSchema,
+    type Station,
+    StationListSchema,
+    type StationRequest,
+    StationSchema,
+    type Trip,
+    TripSchema,
     type TurtleCommand,
     TurtleCommandSchema,
     type TurtleInventory,
@@ -55,13 +62,16 @@ async function request<S extends z.ZodTypeAny>(path: string, schema: S, init?: R
         headers: {Accept: "application/json", ...extraHeaders, ...init?.headers},
     });
 
-    if (!res.ok) {
-        const body: unknown = await res.json().catch(() => null);
-        const parsed = ApiErrorSchema.safeParse(body);
-        throw new ApiError(parsed.success ? parsed.data.error : `${res.status} ${res.statusText}`, res.status);
-    }
-
+    await throwIfFailed(res);
     return schema.parse(await res.json());
+}
+
+/** Throws an ApiError carrying the server's message for a non-2xx response. */
+async function throwIfFailed(res: Response): Promise<void> {
+    if (res.ok) return;
+    const body: unknown = await res.json().catch(() => null);
+    const parsed = ApiErrorSchema.safeParse(body);
+    throw new ApiError(parsed.success ? parsed.data.error : `${res.status} ${res.statusText}`, res.status);
 }
 
 export function fetchTurtles(): Promise<TurtleStatus[]> {
@@ -168,6 +178,54 @@ export function fetchMapBlocks({world, dimension, ...bounds}: MapBox): Promise<M
     if (world != null) params.set("world", world);
     if (dimension != null) params.set("dimension", dimension);
     return request(`/api/map/blocks?${params}`, MapRegionSchema);
+}
+
+/** Every station the fleet shares. */
+export function fetchStations(): Promise<Station[]> {
+    return request("/api/stations", StationListSchema);
+}
+
+/** Creates a station (201). 400 if the request is wrong, 409 if it would share a cell with another station. */
+export function createStation(station: StationRequest): Promise<Station> {
+    return request("/api/stations", StationSchema, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(station),
+    });
+}
+
+/** Deletes a station (204); 404 if there's no such station. */
+export async function deleteStation(id: number): Promise<void> {
+    // 204 has no body to parse
+    const res = await fetch(`${API_BASE_URL}/api/stations/${id}`, {method: "DELETE", headers: extraHeaders});
+    await throwIfFailed(res);
+}
+
+/**
+ * Sends a turtle somewhere. The server plans the path straight away: 202 + the trip, 409 if the turtle is offline or
+ * unseeded, 422 if there's no path or not enough fuel.
+ */
+export function startGoto(id: number, goal: GotoRequest): Promise<Trip> {
+    return request(`/api/turtles/${id}/goto`, TripSchema, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(goal),
+    });
+}
+
+/** The turtle's current trip, or its last one since the server started; null if it has had none (404). */
+export async function fetchTrip(id: number): Promise<Trip | null> {
+    try {
+        return await request(`/api/turtles/${id}/goto`, TripSchema);
+    } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+    }
+}
+
+/** Stops the turtle's trip after its current step (202 + the trip); 404 if no trip is in progress. */
+export function cancelGoto(id: number): Promise<Trip> {
+    return request(`/api/turtles/${id}/goto`, TripSchema, {method: "DELETE"});
 }
 
 /** ws(s):// URL for a server path, honouring VITE_API_URL when set. */

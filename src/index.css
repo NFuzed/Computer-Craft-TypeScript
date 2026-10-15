@@ -611,8 +611,10 @@ h3 {
 }
 
 .seed-heading {
+    /* How many buttons sit in the row; Segmented sets it inline */
+    --options: 4;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(var(--options), 1fr);
     gap: 0.25rem;
     border: 0;
     margin: 0;
@@ -1044,4 +1046,108 @@ h3 {
 
 output.refuel-ok {
     display: block;
+}
+
+/* A panel whose body folds away under its heading */
+.collapse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.collapse-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: -0.25rem;
+    padding: 0.25rem;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.collapse-toggle:hover {
+    background: var(--hover);
+}
+
+.collapse-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.collapse-chevron {
+    color: var(--muted);
+    font-size: 0.8rem;
+    transition: transform 0.15s;
+}
+
+.collapse-toggle[aria-expanded="true"] .collapse-chevron {
+    transform: rotate(90deg);
+}
+
+.collapse-body {
+    margin-top: 0.75rem;
+}
+
+.collapse-body > .seed-form {
+    padding-bottom: 0.9rem;
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.collapse-body > .turtle-group:first-child .group-heading {
+    margin-top: 0;
+}
+
+/* Station rows aren't buttons, so they don't light up on hover */
+.row.station-row {
+    cursor: default;
+}
+
+.row.station-row:hover {
+    background: transparent;
+}
+
+.station-badge {
+    flex-shrink: 0;
+    width: 4.2rem;
+    padding: 0.15rem 0;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--hover);
+    color: var(--accent);
+}
+
+.station-badge.fuel {
+    background: rgba(239, 159, 39, 0.14);
+    color: #efb35a;
+}
+
+.station-badge.drop {
+    background: rgba(29, 158, 117, 0.14);
+    color: #4cc39b;
+}
+
+.station-badge.pickup {
+    background: rgba(55, 138, 221, 0.14);
+    color: #6aaef0;
+}
+
+.goto-heading {
+    margin-top: 0.4rem;
+}
+
+.goto-form .seed-actions > button {
+    flex: 1;
 }

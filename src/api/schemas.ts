@@ -303,3 +303,84 @@ export const DashboardEventSchema = z.discriminatedUnion("type", [
     PositionUpdateEventSchema,
 ]);
 export type DashboardEvent = z.infer<typeof DashboardEventSchema>;
+
+// --- Stations and trips ---
+
+/** protocol.api.StationTypes: what turtles go to a station for. */
+export const STATION_TYPES = ["fuel", "drop", "pickup"] as const;
+export type StationType = (typeof STATION_TYPES)[number];
+
+/** protocol.api.StationSides: where the chest is, seen from the cell the turtle stands in. Front needs a heading. */
+export const STATION_SIDES = ["up", "down", "front"] as const;
+export type StationSide = (typeof STATION_SIDES)[number];
+
+/** protocol.api.MAX_STATION_NAME_LENGTH: same limit as turtle labels. */
+export const MAX_STATION_NAME_LENGTH = 32;
+
+/** protocol.api.Station: a place turtles go to refuel, drop items off or pick them up. Shared by the whole fleet. */
+export const StationSchema = z.object({
+    stationId: z.number().int(),
+    name: z.string(),
+    type: z.string(), // one of STATION_TYPES
+    x: z.number().int(), // the cell the turtle stands in, not the chest
+    y: z.number().int(),
+    z: z.number().int(),
+    heading: z.string().nullish().transform((h) => h ?? null), // which way the turtle faces there
+    side: z.string(), // one of STATION_SIDES
+    world: z.string().nullish().transform((w) => w ?? null),
+    dimension: z.string().nullish().transform((d) => d ?? null),
+    ts: z.number(), // created or last replaced, unix seconds
+});
+export type Station = z.infer<typeof StationSchema>;
+
+export const StationListSchema = z.array(StationSchema);
+
+/** protocol.api.StationRequest: body of POST /api/stations and PUT /api/stations/{id}. */
+export interface StationRequest {
+    name: string;
+    type: StationType;
+    x: number;
+    y: number;
+    z: number;
+    heading: Heading | null; // required when side is "front"
+    side: StationSide;
+    world: string | null;
+    dimension: string | null;
+}
+
+/** protocol.api.TripStatuses: values of Trip.status. */
+export const TripStatuses = {
+    MOVING: "moving", // following a path; replanned when something is in the way
+    ARRIVED: "arrived",
+    FAILED: "failed", // see Trip.error
+    CANCELLED: "cancelled",
+} as const;
+
+/** protocol.api.GotoRequest: body of POST /api/turtles/{id}/goto. A null heading leaves the turtle facing any way. */
+export interface GotoRequest {
+    x: number;
+    y: number;
+    z: number;
+    heading: Heading | null;
+}
+
+/**
+ * protocol.api.Trip: a turtle's journey to a goal. The server plans the path, and plans a new one from where the turtle
+ * stopped when something is in the way.
+ */
+export const TripSchema = z.object({
+    tripId: z.number().int(),
+    x: z.number().int(),
+    y: z.number().int(),
+    z: z.number().int(),
+    heading: z.string().nullish().transform((h) => h ?? null),
+    status: z.string(), // one of TripStatuses
+    pathId: z.number().int(),
+    steps: z.number().int(), // steps in the current path
+    fuel: z.number().int(), // fuel the current path needs
+    replans: z.number().int(), // new paths planned after the first
+    error: z.string().nullish().transform((e) => e ?? null), // why it failed
+    started: z.number(), // unix seconds
+    updated: z.number(),
+});
+export type Trip = z.infer<typeof TripSchema>;
