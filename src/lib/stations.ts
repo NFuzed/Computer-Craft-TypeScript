@@ -1,4 +1,12 @@
-import type {Station, StationSide, StationType} from "../api/schemas";
+import {
+    type GotoRequest,
+    type Heading,
+    HEADINGS,
+    type Station,
+    type StationSide,
+    type StationType,
+    type TurtlePosition,
+} from "../api/schemas";
 import {NO_WORLD, UNKNOWN_DIMENSION} from "./fleet";
 
 export const STATION_TYPE_LABELS: Record<StationType, string> = {
@@ -64,6 +72,30 @@ export function stationTitle(station: Station): string {
     const {name, type, x, y, z, side} = station;
     const chest = stationSideLabel(side).toLowerCase();
     return `${name}: ${stationTypeLabel(type)} station (${x}, ${y}, ${z}), chest ${chest}`;
+}
+
+/**
+ * Blocks between a position and a station, counted the way a turtle moves: one axis at a time. The route the server
+ * plans goes around things, so it's never shorter than this.
+ */
+export function stationDistance(station: Station, pos: { x: number; y: number; z: number }): number {
+    return Math.abs(station.x - pos.x) + Math.abs(station.y - pos.y) + Math.abs(station.z - pos.z);
+}
+
+/** The closest station of a type in the position's world and dimension, or undefined when there's none. */
+export function nearestStation(stations: Station[], pos: TurtlePosition, type: StationType): Station | undefined {
+    let nearest: Station | undefined;
+    for (const s of stations) {
+        if (s.type !== type || s.world !== pos.world || s.dimension !== pos.dimension) continue;
+        if (!nearest || stationDistance(s, pos) < stationDistance(nearest, pos)) nearest = s;
+    }
+    return nearest;
+}
+
+/** The goal that sends a turtle to a station: its standing cell, facing the way the station says. */
+export function stationGoal({x, y, z, heading}: Station): GotoRequest {
+    const h = heading?.toUpperCase();
+    return {x, y, z, heading: (HEADINGS as readonly string[]).includes(h ?? "") ? (h as Heading) : null};
 }
 
 /** Each dimension's stations, dimensions by name. Stations keep the order they came in. */
