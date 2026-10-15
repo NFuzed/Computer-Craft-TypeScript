@@ -6,8 +6,10 @@ import {TurtleDetail} from "./components/TurtleDetail";
 import {TurtleList} from "./components/TurtleList";
 import {WorldList} from "./components/WorldList";
 import {useDashboardSocket} from "./hooks/useDashboardSocket";
+import {useStations} from "./hooks/useStations";
 import {useTurtles} from "./hooks/useTurtles";
 import {groupBy, turtleWorld} from "./lib/fleet";
+import {stationsIn} from "./lib/stations";
 
 const WORLD_KEY = "fleet-world";
 
@@ -43,6 +45,9 @@ export function App() {
         const w = turtleWorld(t);
         return w === undefined || w === world;
     });
+
+    const {data: stations = []} = useStations();
+    const shownStations = stationsIn(stations, world);
 
     function chooseWorld(next: string) {
         setChosenWorld(next);
@@ -87,7 +92,8 @@ export function App() {
                             <StationsPanel world={world} turtle={selected}/>
                             <InventoryPanel turtle={selected}/>
                         </div>
-                        <FleetMap turtles={shown} selectedId={selectedId} onSelect={setSelectedId}/>
+                        <FleetMap turtles={shown} stations={shownStations} selectedId={selectedId}
+                                  onSelect={setSelectedId}/>
                         <TurtleDetail turtle={selected} onClose={() => setSelectedId(null)}/>
                     </>
                 )}

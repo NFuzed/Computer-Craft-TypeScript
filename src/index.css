@@ -1151,3 +1151,42 @@ output.refuel-ok {
 .goto-form .seed-actions > button {
     flex: 1;
 }
+
+/* Stations on the top-down map, in the same colours as their badges (and STATION_HEX for the 3D map) */
+.station-marker {
+    --station: var(--muted);
+}
+
+.station-marker.fuel {
+    --station: #efb35a;
+}
+
+.station-marker.drop {
+    --station: #4cc39b;
+}
+
+.station-marker.pickup {
+    --station: #6aaef0;
+}
+
+.station-pad {
+    fill: color-mix(in srgb, var(--station) 22%, transparent);
+    stroke: var(--station);
+}
+
+.station-chest {
+    fill: var(--station);
+    stroke: var(--panel);
+}
+
+.station-label {
+    fill: var(--station);
+    font-weight: 600;
+}
+
+/* Station names sit lower than turtle names, and in the type's colour (set inline) */
+.map-3d-label.station {
+    margin-top: 0.6rem;
+    font-weight: 500;
+    font-size: 0.7rem;
+}

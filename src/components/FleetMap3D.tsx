@@ -2,8 +2,9 @@ import {useEffect, useLayoutEffect, useMemo, useRef, useState} from "react";
 import * as THREE from "three";
 import {OrbitControls} from "three/examples/jsm/controls/OrbitControls.js";
 import {CSS2DObject, CSS2DRenderer} from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import type {KnownBlock, TurtleStatus} from "../api/schemas";
+import type {KnownBlock, Station, TurtleStatus} from "../api/schemas";
 import {formatAgo, itemDisplayName, turtleHue, turtleName} from "../lib/format";
+import {chestCell, stationHex, stationTitle} from "../lib/stations";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 import {blockColor, blockHue, isDrawnBlock, isTranslucent} from "../lib/world";
 
@@ -11,6 +12,8 @@ type Placed = TurtleStatus & { position: NonNullable<TurtleStatus["position"]> }
 
 interface Props {
     turtles: Placed[];
+    /** The stations in the turtles' world and dimension. */
+    stations?: Station[];
     selectedId: number | null;
     /** Whether the camera follows the selected turtle (or the whole fleet). False once the user has moved it. */
     following: boolean;
@@ -31,6 +34,7 @@ interface Stage {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     turtleGroup: THREE.Group;
+    stationGroup: THREE.Group;
     blockGroup: THREE.Group;
     floorGroup: THREE.Group;
     /** Where each drawn block is, for hovering and for hiding the ones turtles stand in. */
@@ -91,6 +95,8 @@ const ARROW = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0.22, 0.451, 0.2),
 ]);
 const BLOCK = new THREE.BoxGeometry(1, 1, 1);
+const PAD = new THREE.BoxGeometry(0.9, 0.06, 0.9);
+const STATION_PAD_OPACITY = 0.55;
 const HOVER_OUTLINE = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01));
 
 /** Where the camera should look and from how far: the selected turtle, else the middle of the whole fleet. */
@@ -119,13 +125,14 @@ function disposeChildren(group: THREE.Group) {
             // Shared geometries are kept; per-marker materials and one-off geometries go.
             // Meshes, lines and the instanced block mesh all carry these; groups and labels have neither.
             const {geometry, material} = o as Partial<Pick<THREE.Mesh, "geometry" | "material">>;
-            if (geometry && ![BOX, OUTLINE, ARROW, BLOCK].includes(geometry)) geometry.dispose();
+            if (geometry && ![BOX, OUTLINE, ARROW, BLOCK, PAD].includes(geometry)) geometry.dispose();
             if (material) for (const m of [material].flat()) m.dispose();
         });
     }
 }
 
 const NO_BLOCKS: KnownBlock[] = [];
+const NO_STATIONS: Station[] = [];
 
 /** Small stable offset per cell, in [-1, 1]. */
 function cellNoise(x: number, y: number, z: number): number {
@@ -210,6 +217,7 @@ function pickBlock(ray: THREE.Ray, index: BlockIndex): { slot: BlockSlot; distan
 
 export function FleetMap3D({
                                turtles,
+                               stations = NO_STATIONS,
                                selectedId,
                                following,
                                onCameraMoved,
@@ -265,11 +273,12 @@ export function FleetMap3D({
         controls.maxDistance = MAX_DISTANCE;
 
         const turtleGroup = new THREE.Group();
+        const stationGroup = new THREE.Group();
         const blockGroup = new THREE.Group();
         const floorGroup = new THREE.Group();
         const hoverOutline = new THREE.LineSegments(HOVER_OUTLINE, new THREE.LineBasicMaterial({color: SELECTED_COLOR}));
         hoverOutline.visible = false;
-        scene.add(floorGroup, blockGroup, turtleGroup, hoverOutline);
+        scene.add(floorGroup, blockGroup, stationGroup, turtleGroup, hoverOutline);
 
         // OrbitControls applies wheel zoom in one jump per wheel event, and wheel events don't line up with frames,
         // so zooming stuttered while orbiting (which is damped) glided. The wheel handler below collects the zoom
@@ -402,7 +411,7 @@ export function FleetMap3D({
         renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
         stageRef.current = {
-            renderer, labels, scene, camera, controls, turtleGroup, blockGroup, floorGroup,
+            renderer, labels, scene, camera, controls, turtleGroup, stationGroup, blockGroup, floorGroup,
             blocks: emptyBlockIndex(),
             invalidate,
         };
@@ -416,7 +425,7 @@ export function FleetMap3D({
             renderer.domElement.removeEventListener("pointermove", onPointerMove);
             renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
             controls.dispose();
-            for (const g of [turtleGroup, blockGroup, floorGroup]) disposeChildren(g);
+            for (const g of [turtleGroup, stationGroup, blockGroup, floorGroup]) disposeChildren(g);
             hoverOutline.material.dispose();
             renderer.dispose();
             container.removeChild(renderer.domElement);
@@ -433,6 +442,15 @@ export function FleetMap3D({
         for (const t of turtles) stage.turtleGroup.add(turtleMarker(t, t.turtleId === selectedId));
         stage.invalidate();
     }, [turtles, selectedId]);
+
+    // Stations: rebuilt when the list changes, which is rare.
+    useEffect(() => {
+        const stage = stageRef.current;
+        if (!stage) return;
+        disposeChildren(stage.stationGroup);
+        for (const s of stations) stage.stationGroup.add(stationMarker(s));
+        stage.invalidate();
+    }, [stations]);
 
     // World blocks share two instanced meshes, solid and see-through, so thousands of them stay two draw calls.
     useEffect(() => {
@@ -561,6 +579,42 @@ function turtleMarker(turtle: Placed, selected: boolean): THREE.Group {
     tag.title = `${turtleName(turtle)} (${x}, ${y}, ${z})${turtle.online ? "" : " — offline"}`;
     const label = new CSS2DObject(tag);
     label.position.set(0, 0.85, 0);
+    group.add(label);
+    return group;
+}
+
+/**
+ * A pad on the floor of the cell a turtle stands in and an outline around the chest, in the station type's colour, with
+ * a name tag. Not clickable: the Stations panel is where stations are managed.
+ */
+function stationMarker(station: Station): THREE.Group {
+    const {x, y, z} = station;
+    const color = stationHex(station.type);
+    const group = new THREE.Group();
+
+    const pad = new THREE.Mesh(PAD, new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: STATION_PAD_OPACITY,
+        depthWrite: false,
+    }));
+    pad.position.set(x + 0.5, y + 0.03, z + 0.5);
+    group.add(pad);
+
+    const chest = chestCell(station);
+    if (chest) {
+        const outline = new THREE.LineSegments(OUTLINE, new THREE.LineBasicMaterial({color}));
+        outline.position.set(chest.x + 0.5, chest.y + 0.5, chest.z + 0.5);
+        group.add(outline);
+    }
+
+    const tag = document.createElement("div");
+    tag.className = "map-3d-label station";
+    tag.style.color = `#${color.toString(16).padStart(6, "0")}`;
+    tag.textContent = station.name;
+    tag.title = stationTitle(station);
+    const label = new CSS2DObject(tag);
+    label.position.set(x + 0.5, y + 0.3, z + 0.5);
     group.add(label);
     return group;
 }

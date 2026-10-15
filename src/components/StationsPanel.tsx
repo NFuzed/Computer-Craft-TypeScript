@@ -1,8 +1,7 @@
 import {useId, useState} from "react";
 import type {Station, TurtleStatus} from "../api/schemas";
 import {useDeleteStation, useStations} from "../hooks/useStations";
-import {NO_WORLD} from "../lib/fleet";
-import {stationsByDimension, stationSideLabel, stationTypeLabel} from "../lib/stations";
+import {stationsByDimension, stationSideLabel, stationsIn, stationTypeLabel} from "../lib/stations";
 import {StationForm} from "./StationForm";
 
 interface Props {
@@ -33,7 +32,7 @@ export function StationsPanel({world, turtle}: Readonly<Props>) {
     const {data: stations = [], error, isPending} = useStations();
     const remove = useDeleteStation();
 
-    const shown = world == null ? stations : stations.filter((s) => (s.world ?? NO_WORLD) === world);
+    const shown = stationsIn(stations, world);
 
     function toggle() {
         setOpen(!open);
