@@ -1,6 +1,7 @@
 import {useState} from "react";
 import {FleetMap} from "./components/FleetMap";
 import {InventoryPanel} from "./components/InventoryPanel";
+import {StationsPanel} from "./components/StationsPanel";
 import {TurtleDetail} from "./components/TurtleDetail";
 import {TurtleList} from "./components/TurtleList";
 import {WorldList} from "./components/WorldList";
@@ -83,6 +84,7 @@ export function App() {
                         <div className="side-column">
                             <WorldList worlds={worlds} selected={world} onSelect={chooseWorld}/>
                             <TurtleList turtles={shown} selectedId={selectedId} onSelect={setSelectedId}/>
+                            <StationsPanel world={world} turtle={selected}/>
                             <InventoryPanel turtle={selected}/>
                         </div>
                         <FleetMap turtles={shown} selectedId={selectedId} onSelect={setSelectedId}/>

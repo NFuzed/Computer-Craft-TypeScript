@@ -91,18 +91,24 @@ protocol version `v`. Mirror the Kotlin `protocol.messages` classes here as zod 
 
 ### REST
 
-| Method | Path                                   | Response                                                                                                       |
-|--------|----------------------------------------|----------------------------------------------------------------------------------------------------------------|
-| `GET`  | `/api/turtles`                         | `TurtleStatus[]`                                                                                               |
-| `GET`  | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                                 |
-| `POST` | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`          |
-| `PUT`  | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)       |
-| `PUT`  | `/api/turtles/{id}/equipment`          | `TurtleStatus`. Body: `{ left, right }` (`EquippedUpgrade \| null`). `404` if unknown                          |
-| `GET`  | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                               |
-| `POST` | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                         |
-| `POST` | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline     |
-| `POST` | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline           |
-| `GET`  | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, ≤256 apart per axis), optional `world`, `dimension`, `excludeAir` |
+| Method   | Path                                   | Response                                                                                                                |
+|----------|----------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `GET`    | `/api/turtles`                         | `TurtleStatus[]`                                                                                                        |
+| `GET`    | `/api/turtles/{id}`                    | `TurtleStatus`                                                                                                          |
+| `POST`   | `/api/turtles/{id}/seed`               | `202` + `PositionSeed`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W", world?, dimension?, source? }`                   |
+| `PUT`    | `/api/turtles/{id}/label`              | `202` + `TurtleStatus`. Body: `{ label: string \| null }` (null/blank clears; ≤32 printable ASCII chars)                |
+| `PUT`    | `/api/turtles/{id}/equipment`          | `TurtleStatus`. Body: `{ left, right }` (`EquippedUpgrade \| null`). `404` if unknown                                   |
+| `GET`    | `/api/turtles/{id}/inventory`          | `TurtleInventory`, or `404` if the turtle has never reported one                                                        |
+| `POST`   | `/api/turtles/{id}/inventory/selected` | `202` + `{ slot }`. Body: `{ slot: 1-16 }`. Not queued: `409` if the turtle is offline                                  |
+| `POST`   | `/api/turtles/{id}/refuel`             | `202` + `RefuelCommand`. Body: `{ count: 1-64 \| null }` (null burns the selected stack). `409` if offline              |
+| `POST`   | `/api/turtles/{id}/commands`           | `202` + `TurtleCommand`. Body: `{ command }` (one of `COMMANDS`). `400` if unknown, `409` if offline                    |
+| `POST`   | `/api/turtles/{id}/goto`               | `202` + `Trip`. Body: `{ x, y, z, heading: "N"\|"E"\|"S"\|"W" \| null }`. `409` offline/unseeded, `422` no path or fuel |
+| `GET`    | `/api/turtles/{id}/goto`               | `Trip`: the current trip, or the last one since the server started. `404` if none                                       |
+| `DELETE` | `/api/turtles/{id}/goto`               | `202` + `Trip`. Stops the turtle after its current step. `404` if no trip is in progress                                |
+| `GET`    | `/api/stations`                        | `Station[]`. Optional query `type`                                                                                      |
+| `POST`   | `/api/stations`                        | `201` + `Station`. Body: `StationRequest`. `400` if invalid, `409` if it overlaps another station                       |
+| `DELETE` | `/api/stations/{id}`                   | `204`. `404` if unknown                                                                                                 |
+| `GET`    | `/api/map/blocks`                      | `MapRegion`. Query: `minX..maxZ` (inclusive, ≤256 apart per axis), optional `world`, `dimension`, `excludeAir`          |
 
 ```ts
 type TurtleStatus = {
@@ -190,6 +196,36 @@ type MapRegion = {
     blocks: { x: number; y: number; z: number; name: string; turtleId: number | null; ts: number }[];
 };
 
+// Places turtles go to refuel, drop items off or pick them up, shared by the whole fleet. x, y, z is the cell the
+// turtle stands in; the chest is above, below or in front of it (front needs a heading). Names: 1-32 printable ASCII.
+type StationRequest = {
+    name: string;
+    type: "fuel" | "drop" | "pickup";
+    x: number; y: number; z: number;
+    heading: string | null;         // which way the turtle faces there
+    side: "up" | "down" | "front";
+    world: string | null;
+    dimension: string | null;
+};
+type Station = StationRequest & { stationId: number; ts: number };
+
+// POST /goto plans a path straight away and refuses an impossible one. When the turtle runs into something the server
+// plans again from where it stopped. The dashboard polls GET /goto (and the turtle) every 1s while a trip is moving,
+// and holds back single commands until it ends.
+type Trip = {
+    tripId: number;
+    x: number; y: number; z: number;
+    heading: string | null;
+    status: "moving" | "arrived" | "failed" | "cancelled";
+    pathId: number;
+    steps: number;                  // steps in the current path
+    fuel: number;                   // fuel the current path needs
+    replans: number;
+    error: string | null;           // why it failed
+    started: number;
+    updated: number;
+};
+
 // Turtles have no GPS: they dead-reckon from a seed set on the dashboard. The server hands the seed
 // to the turtle on its next heartbeat and clears it when a position report carries the same seedId.
 type PositionSeed = {
@@ -233,15 +269,22 @@ src/
 │   ├── useTurtles.ts    # REST query + live socket updates merged into one store; seed, rename, send commands
 │   ├── useInventory.ts  # polls a turtle's inventory, selects slots
 │   ├── useWorldMap.ts   # polls the world map around the turtles for the 3D map
+│   ├── useStations.ts   # the fleet's stations; add and remove them
+│   ├── useTrip.ts       # a turtle's goto trip: start, poll while moving, stop
 │   └── useDashboardSocket.ts
 ├── components/
 │   ├── WorldList.tsx    # the worlds turtles are in; choosing one limits the list and map to it
 │   ├── TurtleList.tsx   # turtles in the chosen world by dimension: online/offline, label, last seen
+│   ├── StationsPanel.tsx # collapsible list of the chosen world's stations by dimension, with Add and remove
+│   ├── StationForm.tsx  # name, type, standing cell (or the selected turtle's), chest side, heading, world
 │   ├── TurtleDetail.tsx # status, label, position, equipment, commands
 │   ├── LabelPositionSection.tsx # label + reported position, with an Edit button that opens LabelPositionForm
 │   ├── EquipmentSection.tsx # equipped upgrades, with a Seed button that opens EquipmentForm
 │   ├── EquipmentForm.tsx # pick each side's upgrade from a list or type an item id (PUT /equipment)
 │   ├── CommandPad.tsx   # move/turn pad, and dig/place/drop/suck/attack tiles aimed by an Up/Front/Down switch
+│   ├── GotoForm.tsx     # send the turtle to coordinates or a station, see the trip's progress, stop it
+│   ├── PlaceSelect.tsx  # world / dimension dropdown with None and "Add new…"
+│   ├── Segmented.tsx    # radios styled as segmented buttons
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form
@@ -250,6 +293,7 @@ src/
 ├── lib/
 │   ├── fleet.ts         # a turtle's world and dimension, grouping turtles by them
 │   ├── format.ts        # colours, names, "x ago" timestamps
+│   ├── stations.ts      # station type and chest side names, grouping stations by dimension
 │   └── world.ts         # block colours and which blocks the 3D map draws
 ├── App.tsx
 └── main.tsx
@@ -272,5 +316,7 @@ src/
 - [x] Show a turtle's fuel and refuel it from the selected slot
 - [x] Show a turtle's equipment and which commands it can run
 - [x] Send single commands (move, turn, dig, place, drop, suck, attack), gated by the turtle's capabilities
+- [x] Add and view stations (fuel, drop-off, pickup)
+- [x] Send a turtle to a location or a station
 - [ ] Higher-level commands (mine an area, return home)
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)

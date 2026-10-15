@@ -157,7 +157,7 @@ export function useTurtleCommand(turtle: TurtleStatus) {
 }
 
 /** Replaces a turtle's entry in the cached turtle list with a status fresh from the server. */
-function storeStatus(queryClient: QueryClient, status: TurtleStatus) {
+export function storeStatus(queryClient: QueryClient, status: TurtleStatus) {
     queryClient.setQueryData<TurtleStatus[]>(turtlesQueryKey, (prev) =>
         upsert(prev ?? [], status.turtleId, () => status),
     );
