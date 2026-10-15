@@ -1,5 +1,5 @@
 import {type JSX, lazy, type PointerEvent, Suspense, useEffect, useLayoutEffect, useRef, useState} from "react";
-import type {TurtleStatus} from "../api/schemas";
+import type {Station, TurtleStatus} from "../api/schemas";
 import {
     DEFAULT_VIEW_DISTANCE,
     mapBoxFor,
@@ -10,10 +10,13 @@ import {
 } from "../hooks/useWorldMap";
 import {groupBy, turtleDimension, UNKNOWN_DIMENSION} from "../lib/fleet";
 import {turtleColor, turtleName} from "../lib/format";
+import {chestCell, stationDimension, stationTitle} from "../lib/stations";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
 
 interface Props {
     turtles: TurtleStatus[];
+    /** The stations in the shown world; the map draws those in the shown dimension. */
+    stations: Station[];
     selectedId: number | null;
     onSelect: (id: number) => void;
 }
@@ -173,7 +176,7 @@ function useKeyedState<T>(key: string) {
     return [state?.key === key ? state.value : null, setState] as const;
 }
 
-export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
+export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Props>) {
     const placed = turtles.filter((t): t is Placed => t.position != null);
     const dimensions = dimensionsByCount(placed);
 
@@ -207,6 +210,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
 
     const visible = placed.filter((t) => turtleDimension(t) === dimension);
     const selected = visible.find((t) => t.turtleId === selectedId);
+    const visibleStations = stations.filter((s) => stationDimension(s) === dimension);
 
     // Only the 3D map draws blocks, so the world map is only fetched while it's open.
     const [viewDistance, setViewDistance] = useState<ViewDistance>(storedViewDistance);
@@ -390,6 +394,7 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                 <Suspense fallback={<p className="muted empty">Loading 3D map…</p>}>
                     <FleetMap3D
                         turtles={visible}
+                        stations={visibleStations}
                         selectedId={selectedId}
                         following={following3d}
                         onCameraMoved={() => setMoved3d({key: followKey, value: true})}
@@ -421,6 +426,9 @@ export function FleetMap({turtles, selectedId, onSelect}: Readonly<Props>) {
                                 labelStep={view.labelStep}
                                 unit={view.blocksPerPixel * UNIT_PX}
                             />
+                            {visibleStations.map((s) => (
+                                <StationMarker key={s.stationId} station={s} blocksPerPixel={view.blocksPerPixel}/>
+                            ))}
                             {visible.map((t) => (
                                 <TurtleMarker
                                     key={t.turtleId}
@@ -479,6 +487,36 @@ function GridLines({minX, minZ, width, height, step, labelStep, unit}: Readonly<
         );
     }
     return <g>{lines}</g>;
+}
+
+/**
+ * A diamond on the cell a turtle stands in, in the station type's colour, with a small square for the chest: in the
+ * next cell when it's in front, in the middle when it's above or below. Drawn under the turtles.
+ */
+function StationMarker({station, blocksPerPixel}: Readonly<{ station: Station; blocksPerPixel: number }>) {
+    const {x, z} = station;
+    const unit = blocksPerPixel * UNIT_PX;
+    const size = Math.max(1, blocksPerPixel * MIN_MARKER_PX);
+    const half = size / 2;
+    const chest = chestCell(station);
+    // The chest's offset from the station, scaled with the marker so it stays beside it when zoomed out
+    const chestOffset = chest ? {dx: (chest.x - x) * size, dz: (chest.z - z) * size} : null;
+    const chestHalf = half * 0.4;
+
+    return (
+        <g transform={`translate(${x + 0.5} ${z + 0.5})`} className={`station-marker ${station.type}`}>
+            <title>{stationTitle(station)}</title>
+            <polygon points={`0,${-half} ${half},0 0,${half} ${-half},0`} className="station-pad"
+                     strokeWidth={unit * 0.15}/>
+            {chestOffset && (
+                <rect x={chestOffset.dx - chestHalf} y={chestOffset.dz - chestHalf} width={chestHalf * 2}
+                      height={chestHalf * 2} className="station-chest" strokeWidth={unit * 0.1}/>
+            )}
+            <text y={half + unit * 1.6} textAnchor="middle" className="station-label" fontSize={unit * 1.1}>
+                {station.name}
+            </text>
+        </g>
+    );
 }
 
 function TurtleMarker({

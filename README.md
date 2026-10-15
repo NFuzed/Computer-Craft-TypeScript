@@ -288,12 +288,12 @@ src/
 │   ├── InventoryPanel.tsx # 4×4 inventory grid; click a slot to select it
 │   ├── RefuelForm.tsx   # fuel gauge, refuel N items / the whole selected stack
 │   ├── LabelPositionForm.tsx # rename (PUT /label) and set position + heading (POST /seed) in one form
-│   ├── FleetMap.tsx     # top-down X/Z map, and the switch to the 3D map
-│   └── FleetMap3D.tsx   # three.js map of the turtles and the blocks they've seen
+│   ├── FleetMap.tsx     # top-down X/Z map of turtles and stations, and the switch to the 3D map
+│   └── FleetMap3D.tsx   # three.js map of the turtles, stations and the blocks they've seen
 ├── lib/
 │   ├── fleet.ts         # a turtle's world and dimension, grouping turtles by them
 │   ├── format.ts        # colours, names, "x ago" timestamps
-│   ├── stations.ts      # station type and chest side names, grouping stations by dimension
+│   ├── stations.ts      # station names, colours, chest cells, filtering by world and grouping by dimension
 │   └── world.ts         # block colours and which blocks the 3D map draws
 ├── App.tsx
 └── main.tsx
@@ -316,7 +316,7 @@ src/
 - [x] Show a turtle's fuel and refuel it from the selected slot
 - [x] Show a turtle's equipment and which commands it can run
 - [x] Send single commands (move, turn, dig, place, drop, suck, attack), gated by the turtle's capabilities
-- [x] Add and view stations (fuel, drop-off, pickup)
+- [x] Add and view stations (fuel, drop-off, pickup), and show them on both maps
 - [x] Send a turtle to a location or a station
 - [ ] Higher-level commands (mine an area, return home)
 - [ ] Production build + deployment (served by Ktor as static files, or hosted separately with CORS)
