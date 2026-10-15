@@ -1,4 +1,14 @@
-import {type JSX, lazy, type PointerEvent, Suspense, useEffect, useLayoutEffect, useRef, useState} from "react";
+import {
+    type JSX,
+    lazy,
+    type MouseEvent,
+    type PointerEvent,
+    Suspense,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState
+} from "react";
 import type {Station, TurtleStatus} from "../api/schemas";
 import {
     DEFAULT_VIEW_DISTANCE,
@@ -12,6 +22,7 @@ import {groupBy, turtleDimension, UNKNOWN_DIMENSION} from "../lib/fleet";
 import {turtleColor, turtleName} from "../lib/format";
 import {chestCell, stationDimension, stationTitle} from "../lib/stations";
 import {WHEEL_ZOOM_SPEED, wheelPixels} from "../lib/wheel";
+import {TurtleMenu} from "./TurtleMenu";
 
 interface Props {
     turtles: TurtleStatus[];
@@ -46,6 +57,19 @@ interface Drag {
     startY: number;
     origin: Frame;
     moved: boolean;
+}
+
+/** The turtle the camera is locked onto, and the zoom it keeps while following it. */
+interface Anchor {
+    turtleId: number;
+    span: number;
+}
+
+/** A right-clicked turtle's menu, and where it opens in client px. */
+interface OpenMenu {
+    turtleId: number;
+    x: number;
+    y: number;
 }
 
 const MODE_KEY = "fleet-map-mode";
@@ -236,7 +260,13 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
     const followKeyFor = (turtleId: number | undefined) => `${dimension}:${turtleId ?? "all"}`;
     const followKey = followKeyFor(selected?.turtleId);
     const [manualFrame, setPanned] = useKeyedState<Frame>(followKey);
-    const frame = autoFrame && (manualFrame ?? autoFrame);
+
+    // A turtle the camera is locked onto keeps the map centred on it, whatever is selected, until the map is dragged.
+    // It holds while the turtle is out of the shown dimension, and picks up again when it's back.
+    const [anchor, setAnchor] = useState<Anchor | null>(null);
+    const anchored = anchor && visible.find((t) => t.turtleId === anchor.turtleId);
+    const anchorFrame = anchored && {cx: anchored.position.x + 0.5, cz: anchored.position.z + 0.5, span: anchor.span};
+    const frame = autoFrame && (anchorFrame ?? manualFrame ?? autoFrame);
 
     // The 3D camera follows the same way: until the user moves it, for whatever was being followed at the time.
     const [moved3d, setMoved3d] = useKeyedState<true>(followKey);
@@ -246,24 +276,29 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
     const drag = useRef<Drag | null>(null);
 
     // The wheel listener is attached once per element, so it reads the current frame through a ref.
-    const latest = useRef({autoFrame, followKey});
+    const latest = useRef({autoFrame, followKey, locked: false});
     useLayoutEffect(() => {
-        latest.current = {autoFrame, followKey};
+        latest.current = {autoFrame, followKey, locked: Boolean(anchored)};
     });
 
     useEffect(() => {
         if (!svg) return;
         // Registered by hand because React's onWheel is passive and can't stop the page from scrolling.
         const onWheel = (e: WheelEvent) => {
-            const {autoFrame, followKey} = latest.current;
+            const {autoFrame, followKey, locked} = latest.current;
             if (!autoFrame) return;
             e.preventDefault();
+            const factor = Math.exp(wheelPixels(e) * WHEEL_ZOOM_SPEED);
+            // Zooming keeps the lock, around the turtle rather than the cursor
+            if (locked) {
+                setAnchor((prev) => prev && {...prev, span: clamp(prev.span * factor, MIN_ZOOM_SPAN, MAX_ZOOM_SPAN)});
+                return;
+            }
             const rect = svg.getBoundingClientRect();
             const short = Math.min(rect.width, rect.height);
             // Offset of the cursor from the centre of the map, in px.
             const ox = e.clientX - rect.left - rect.width / 2;
             const oy = e.clientY - rect.top - rect.height / 2;
-            const factor = Math.exp(wheelPixels(e) * WHEEL_ZOOM_SPEED);
             // Functional update: several wheel events can arrive before the next render.
             setPanned((prev) => {
                 const base = prev?.key === followKey ? prev.value : autoFrame;
@@ -291,6 +326,24 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
         onSelect(turtleId);
     }
 
+    function lockOn(turtleId: number) {
+        setAnchor({turtleId, span: frame?.span ?? SELECTED_SPAN});
+    }
+
+    // Unlocking leaves the map where it is, as if it had been dragged there
+    function unlock() {
+        if (frame) setPanned({key: followKey, value: frame});
+        setAnchor(null);
+    }
+
+    const [menu, setMenu] = useState<OpenMenu | null>(null);
+    const menuTurtle = menu && visible.find((t) => t.turtleId === menu.turtleId);
+
+    function openMenu(turtleId: number, e: MouseEvent) {
+        e.preventDefault();
+        setMenu({turtleId, x: e.clientX, y: e.clientY});
+    }
+
     function onPointerDown(e: PointerEvent<SVGSVGElement>) {
         if (e.button !== 0 || !frame) return;
         drag.current = {pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origin: frame, moved: false};
@@ -308,6 +361,8 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
             d.moved = true;
             svg.setPointerCapture(e.pointerId);
             setDragging(true);
+            // Moving the map breaks the lock; the drag starts from where the locked camera was
+            setAnchor(null);
         }
         const rect = svg.getBoundingClientRect();
         const blocksPerPixel = d.origin.span / Math.min(rect.width, rect.height);
@@ -379,7 +434,13 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                         scroll to zoom
                     </span>
                 )}
-                {mode === "top" && view && manualFrame && (
+                {mode === "top" && view && anchored && (
+                    <button type="button" className="secondary map-recentre" onClick={unlock}
+                            title="Stop following this turtle. Dragging the map does this too">
+                        Locked on {turtleName(anchored)} · Unlock
+                    </button>
+                )}
+                {mode === "top" && view && !anchored && manualFrame && (
                     <button type="button" className="secondary map-recentre" onClick={() => setPanned(null)}>
                         Recentre
                     </button>
@@ -413,6 +474,8 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                     onPointerMove={onPointerMove}
                     onPointerUp={onPointerEnd}
                     onPointerCancel={onPointerEnd}
+                    // Right-clicking a turtle opens its menu; anywhere else on the map does nothing
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     <title>{`Top-down map of ${visible.length} turtles in ${dimension}`}</title>
                     {view && (
@@ -436,6 +499,7 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                                     blocksPerPixel={view.blocksPerPixel}
                                     selected={t.turtleId === selectedId}
                                     onSelect={selectOnMap}
+                                    onMenu={openMenu}
                                 />
                             ))}
                         </>
@@ -443,6 +507,17 @@ export function FleetMap({turtles, stations, selectedId, onSelect}: Readonly<Pro
                 </svg>
             )}
             {visible.length === 0 && <p className="muted empty">No turtle positions yet.</p>}
+            {mode === "top" && menu && menuTurtle && (
+                <TurtleMenu
+                    turtle={menuTurtle}
+                    x={menu.x}
+                    y={menu.y}
+                    locked={anchored?.turtleId === menuTurtle.turtleId}
+                    onLock={() => lockOn(menuTurtle.turtleId)}
+                    onUnlock={unlock}
+                    onClose={() => setMenu(null)}
+                />
+            )}
         </section>
     );
 }
@@ -524,11 +599,13 @@ function TurtleMarker({
                           blocksPerPixel,
                           selected,
                           onSelect,
+                          onMenu,
                       }: Readonly<{
     turtle: Placed;
     blocksPerPixel: number;
     selected: boolean;
     onSelect: (id: number) => void;
+    onMenu: (id: number, e: MouseEvent) => void;
 }>) {
     const {x, z, heading} = turtle.position;
     const unit = blocksPerPixel * UNIT_PX;
@@ -542,12 +619,13 @@ function TurtleMarker({
     const color = turtleColor(turtle.turtleId);
 
     // Clicking a marker is a mouse shortcut for the turtle list, which is the keyboard and screen-reader way to
-    // select a turtle. SVG has no native <button>, so the marker is hidden from assistive tech instead.
+    // select a turtle; right-clicking opens its menu. SVG has no native <button>, so the marker is hidden from assistive tech instead.
     return (
         <g
             transform={`translate(${x + 0.5} ${z + 0.5})`}
             className={turtle.online ? "marker" : "marker offline"}
             onClick={() => onSelect(turtle.turtleId)}
+            onContextMenu={(e) => onMenu(turtle.turtleId, e)}
             aria-hidden="true"
         >
             <title>

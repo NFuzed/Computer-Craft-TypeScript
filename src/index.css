@@ -480,6 +480,87 @@ h3 {
     font-weight: 600;
 }
 
+/* Right-click menu (ContextMenu), drawn over everything at the cursor */
+.context-menu {
+    position: fixed;
+    z-index: 100;
+    min-width: 14rem;
+    max-width: 22rem;
+    padding: 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    font-size: 0.85rem;
+}
+
+.context-menu:focus {
+    outline: none;
+}
+
+.context-menu-heading {
+    padding: 0.3rem 0.6rem 0.4rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.context-menu-item:not(:disabled):hover,
+.context-menu-item:focus-visible {
+    background: var(--hover);
+    outline: none;
+}
+
+.context-menu-item:disabled {
+    color: var(--offline);
+    cursor: default;
+}
+
+.context-menu-hint {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-menu-item:disabled .context-menu-hint {
+    color: inherit;
+}
+
+.context-menu-separator {
+    margin: 0.3rem 0.2rem;
+    border: 0;
+    border-top: 1px solid var(--border);
+}
+
+.context-menu-error {
+    margin: 0.3rem 0.6rem;
+    color: var(--error-text);
+    font-size: 0.78rem;
+}
+
 .detail-header {
     display: flex;
     align-items: center;
